@@ -8,6 +8,8 @@ A Python ML project that classifies text into three categories:
 
 Each classification returns confidence percentages and a short list of key linguistic signals that influenced the result.
 
+**New Feature:** The `Humanizer` takes AI-generated text and alters its statistical properties (burstiness, entropy, perplexity) to mimic human text, utilizing an optional Ollama LLM verification pass. 
+
 ---
 
 ## Setup
@@ -19,120 +21,56 @@ pip install -r requirements.txt
 ```
 
 Python 3.10+ required. A CUDA-capable GPU is strongly recommended for training and perplexity scoring.
+To use the LLM polish pass in the humanizer, you must have [Ollama](https://ollama.com/) installed and running locally with the `llama3:8b-instruct` model.
 
 ---
 
 ## Usage
 
-### CLI
+### Web UI (Next.js)
+TextOrigin now includes a sleek, dark-mode Next.js interface for classification and humanizing.
 
-```bash
-# Classify a string directly
-python classify.py --text "Delve into the nuanced landscape of modern AI technologies."
-
-# Classify a file
-python classify.py --file path/to/essay.txt
-
-# Output raw JSON
-python classify.py --text "Some text here." --json
-```
-
-**Example output:**
-
-```
-  TextOrigin — Classification Results
-  ──────────────────────────────────────
-  Human              12.0%  ███
-  AI Written         71.0%  █████████████████████
-  AI Paraphrased     17.0%  █████
-
-  Key signals detected:
-    • low burstiness
-    • high AI phrase ratio
-    • high structural regularity
-```
-
-### API
-
-Start the server:
-
+1. Start the backend API:
 ```bash
 uvicorn src.api.app:app --reload
 ```
+2. Start the frontend:
+```bash
+cd frontend
+npm install
+npm run dev
+```
+3. Open `http://localhost:3000` in your browser.
+
+### API
 
 **POST /classify**
-
 ```bash
 curl -X POST http://localhost:8000/classify \
   -H "Content-Type: application/json" \
   -d '{"text": "Delve into the nuanced landscape of modern AI."}'
 ```
 
-Response:
-
-```json
-{
-  "human": 0.12,
-  "ai_written": 0.71,
-  "ai_paraphrased": 0.17,
-  "top_features": ["low burstiness", "high AI phrase ratio"]
-}
+**POST /humanize**
+```bash
+curl -X POST http://localhost:8000/humanize \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Delve into the nuanced landscape of modern AI.", "use_llm": true}'
 ```
 
-**GET /health** — returns `{"status": "ok"}`
-
-Interactive docs available at `http://localhost:8000/docs`.
-
----
-
-## Data Pipeline
-
-The model is trained on three classes:
-
-| Class | Source |
-|---|---|
-| `human` | Human-written samples from `artem9k/ai-text-detection-pile` |
-| `ai_written` | AI-generated samples from the same dataset |
-| `ai_paraphrased` | AI samples run through `humarin/chatgpt_paraphraser_on_T5_base` |
-
-To build the dataset (5k samples per class by default):
-
+### CLI
 ```bash
-python src/data/pipeline.py --sample-size 5000 --output data/raw/combined.csv
+python classify.py --text "Delve into the nuanced landscape of modern AI technologies."
 ```
 
 ---
 
-## Feature Engineering
+## Hybrid Humanizer Architecture
 
-Six features are extracted per sample and saved to `data/features/features.csv`:
-
-| Feature | Description |
-|---|---|
-| `perplexity` | GPT-2 perplexity score — lower = more predictable (AI-like) |
-| `burstiness` | Coefficient of variation in sentence lengths — lower = more uniform (AI-like) |
-| `entropy` | Shannon entropy over token distribution |
-| `ai_phrase_ratio` | Fraction of known AI-associated phrases present |
-| `avg_sentence_length` | Mean words per sentence |
-| `structural_regularity` | Inverted CV — higher = more uniform sentence structure |
-
-```bash
-python scripts/extract_features.py --input data/raw/combined.csv --output data/features/features.csv
-```
-
----
-
-## Model Training
-
-Fine-tunes `roberta-base` for 3-class classification with an 80/10/10 train/val/test split.
-
-```bash
-python scripts/train.py --data data/features/features.csv --output-dir models/roberta-classifier
-```
-
-The trained model is saved to `models/roberta-classifier/` (not committed to git — too large).
-
-Training config: `lr=2e-5`, `epochs=3`, `batch=16`, `fp16` if CUDA available.
+The humanize feature runs a two-stage pipeline:
+1. **Heuristic Engine:** Removes known AI phrases, alters sentence lengths randomly to increase burstiness, and performs synonym swaps to increase entropy.
+2. **LLM Polish (Ollama):** Asks a local LLM to rewrite the heuristic text for smoothness, strictly keeping stylistic edits only.
+3. **Cosine Verification:** Checks semantic drift between the original text and the final polished text using `sentence-transformers`. If the similarity drops below a safe threshold (0.85), it falls back to the heuristic version.
 
 ---
 
@@ -144,31 +82,11 @@ textorigin/
 │   ├── data/           # Loader, paraphraser, pipeline
 │   ├── features/       # Feature extractors and phrase list
 │   ├── model/          # RoBERTa classifier, metrics
-│   └── api/            # FastAPI app, predictor, explainer
+│   ├── utils/          # Cosine similarity utilities
+│   └── api/            # FastAPI app, predictor, explainer, humanizer, ollama_client
+├── frontend/           # Next.js web application
 ├── scripts/
-│   ├── extract_features.py
-│   └── train.py
 ├── tests/
-├── data/               # Raw + feature CSVs (gitignored)
-├── models/             # Trained checkpoints (gitignored)
-├── notebooks/
 ├── classify.py
 └── requirements.txt
-```
-
----
-
-## Dataset Sources
-
-- [`artem9k/ai-text-detection-pile`](https://huggingface.co/datasets/artem9k/ai-text-detection-pile) — HuggingFace dataset with human and AI-written text
-- [`humarin/chatgpt_paraphraser_on_T5_base`](https://huggingface.co/humarin/chatgpt_paraphraser_on_T5_base) — T5-based paraphrasing model used to generate the third class
-- [`roberta-base`](https://huggingface.co/roberta-base) — base model for fine-tuning
-- [`gpt2`](https://huggingface.co/gpt2) — used as perplexity scorer during feature extraction
-
----
-
-## Tests
-
-```bash
-pytest tests/
 ```
