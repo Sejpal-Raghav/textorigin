@@ -1,14 +1,25 @@
-from datasets import load_dataset
 import pandas as pd
+from datasets import load_dataset
+
+DATASET_ID = "artem9k/ai-text-detection-pile"
+DATASET_REVISION = "9bc306f"
 
 
 def load_raw_data(sample_size: int = 5000, seed: int = 42) -> pd.DataFrame:
-    dataset = load_dataset("artem9k/ai-text-detection-pile", split="train")
+    dataset = load_dataset(
+        DATASET_ID,
+        revision=DATASET_REVISION,
+        split="train",
+    )
     df = dataset.to_pandas()
 
-    text_col = "text" if "text" in df.columns else df.columns[0]
-    label_col = "label" if "label" in df.columns else df.columns[1]
-    df = df.rename(columns={text_col: "text", label_col: "label"})
+    missing = {"text", "label"}.difference(df.columns)
+    if missing:
+        raise ValueError(
+            "Upstream dataset schema changed; missing columns: "
+            + ", ".join(sorted(missing))
+        )
+    df["source_id"] = [f"pile-{index}" for index in df.index]
 
     human = df[df["label"] == 0].sample(
         n=min(sample_size, (df["label"] == 0).sum()), random_state=seed
@@ -22,4 +33,4 @@ def load_raw_data(sample_size: int = 5000, seed: int = 42) -> pd.DataFrame:
     human["source"] = "human"
     ai["source"] = "ai_written"
 
-    return pd.concat([human, ai], ignore_index=True)[["text", "source"]]
+    return pd.concat([human, ai], ignore_index=True)[["text", "source", "source_id"]]

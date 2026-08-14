@@ -1,34 +1,14 @@
-import os
-import requests
+"""Compatibility facade for the original Ollama helper."""
 
-# Default Ollama host, configurable via env var
-OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+from src.bootstrap import get_services
+from src.errors import ExternalServiceError
 
 
-def polish_text(text: str, model: str = "llama3:8b-instruct") -> str | None:
-    prompt = (
-        "Rewrite the following passage so it sounds more like a human wrote it.\n"
-        "Keep the original meaning and facts unchanged.\n"
-        "Only make minimal stylistic changes (e.g., vary sentence length,\n"
-        "replace rare words, add natural connectors).\n"
-        "Return the revised text exactly, no explanations or conversational intro.\n\n"
-        f"Text:\n{text}"
-    )
-    
-    payload = {
-        "model": model,
-        "prompt": prompt,
-        "stream": False,
-        "options": {
-            "temperature": 0.4
-        }
-    }
-    
+def polish_text(text: str, model: str | None = None) -> str | None:
+    client = get_services().ollama
+    if model is not None and model != client.model:
+        raise ValueError("Per-call model overrides are no longer supported; configure the model centrally")
     try:
-        response = requests.post(f"{OLLAMA_HOST}/api/generate", json=payload, timeout=60)
-        response.raise_for_status()
-        data = response.json()
-        return data.get("response", "").strip()
-    except Exception as e:
-        print(f"Error calling Ollama: {e}")
+        return client.polish(text)
+    except ExternalServiceError:
         return None

@@ -26,6 +26,7 @@ notebooks/.ipynb_checkpoints/
 .pytest_cache/
 .coverage
 htmlcov/
+*.log
 
 # OS
 .DS_Store

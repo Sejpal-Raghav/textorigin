@@ -4,17 +4,20 @@ from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 
 MODEL_ID = "humarin/chatgpt_paraphraser_on_T5_base"
+MODEL_REVISION = "f86b18a7feb0b8149b7612a620b61e2e26dbf82e"
 
 
 def paraphrase_texts(texts: list[str], batch_size: int = 8) -> list[str]:
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
-    model = AutoModelForSeq2SeqLM.from_pretrained(MODEL_ID).to(device)
+    tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, revision=MODEL_REVISION)
+    model = AutoModelForSeq2SeqLM.from_pretrained(
+        MODEL_ID, revision=MODEL_REVISION
+    ).to(device)
     model.eval()
 
     results = []
     for i in tqdm(range(0, len(texts), batch_size), desc="Paraphrasing"):
-        batch = texts[i : i + batch_size]
+        batch = [f"paraphrase: {text}" for text in texts[i : i + batch_size]]
         inputs = tokenizer(
             batch,
             return_tensors="pt",
@@ -43,4 +46,10 @@ def generate_paraphrased_class(
     sample = ai_df.sample(n=min(sample_size, len(ai_df)), random_state=seed)
     texts = sample["text"].tolist()
     paraphrased = paraphrase_texts(texts)
-    return pd.DataFrame({"text": paraphrased, "source": "ai_paraphrased"})
+    return pd.DataFrame(
+        {
+            "text": paraphrased,
+            "source": "ai_paraphrased",
+            "source_id": sample["source_id"].tolist(),
+        }
+    )

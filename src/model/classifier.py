@@ -7,7 +7,8 @@ from transformers import (
     TrainingArguments,
 )
 
-MODEL_ID = "roberta-base"
+MODEL_ID = "FacebookAI/roberta-base"
+MODEL_REVISION = "e2da8e2"
 
 LABEL2ID = {"human": 0, "ai_written": 1, "ai_paraphrased": 2}
 ID2LABEL = {v: k for k, v in LABEL2ID.items()}
@@ -31,9 +32,11 @@ class TextDataset(Dataset):
 
 def load_model_and_tokenizer(model_path: str = None):
     path = model_path or MODEL_ID
-    tokenizer = RobertaTokenizerFast.from_pretrained(path)
+    revision = None if model_path else MODEL_REVISION
+    tokenizer = RobertaTokenizerFast.from_pretrained(path, revision=revision)
     model = RobertaForSequenceClassification.from_pretrained(
         path,
+        revision=revision,
         num_labels=3,
         id2label=ID2LABEL,
         label2id=LABEL2ID,

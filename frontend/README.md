@@ -1,36 +1,34 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# TextOrigin frontend
 
-## Getting Started
+This Next.js App Router client provides classification and humanization controls for the TextOrigin FastAPI backend.
 
-First, run the development server:
+## Setup
 
 ```bash
+npm ci
+copy .env.example .env.local
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open `http://localhost:3000`. The API defaults to `http://localhost:8000`; override it at build time with:
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+```text
+NEXT_PUBLIC_TEXTORIGIN_API_URL=https://textorigin-api.example.com
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+`NEXT_PUBLIC_` values are visible in the browser bundle and must not contain secrets.
 
-## Learn More
+## Structure
 
-To learn more about Next.js, take a look at the following resources:
+- `src/app/page.js`: page-level input and classification state
+- `src/components/ClassificationResults.js`: score and observation rendering
+- `src/components/HumanizePanel.js`: humanization interaction and results
+- `src/lib/api.js`: HTTP contract, timeout, and error normalization
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Verification
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+npm run build
+```
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+The backend must separately pass `pytest -q`. The application deliberately uses local component state; no global state library is needed for the current workflow.

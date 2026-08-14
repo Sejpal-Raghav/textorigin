@@ -4,34 +4,29 @@ from collections import Counter
 
 import numpy as np
 import torch
-from transformers import GPT2LMHeadModel, GPT2TokenizerFast
 
 from src.features.phrases import AI_PHRASES
+from src.inference.perplexity import get_perplexity_model
 
-_gpt2_model = None
-_gpt2_tokenizer = None
-
-
-def _get_gpt2():
-    global _gpt2_model, _gpt2_tokenizer
-    if _gpt2_model is None:
-        _gpt2_tokenizer = GPT2TokenizerFast.from_pretrained("gpt2")
-        _gpt2_model = GPT2LMHeadModel.from_pretrained("gpt2")
-        _gpt2_model.eval()
-        if torch.cuda.is_available():
-            _gpt2_model = _gpt2_model.cuda()
-    return _gpt2_model, _gpt2_tokenizer
+_AI_PHRASE_PATTERN = re.compile(
+    "|".join(
+        rf"\b{re.escape(phrase)}\b"
+        for phrase in sorted(AI_PHRASES, key=len, reverse=True)
+    ),
+    flags=re.IGNORECASE,
+)
+_WORD_PATTERN = re.compile(r"\b[\w']+\b")
 
 
 def compute_perplexity(text: str, max_length: int = 512) -> float:
-    model, tokenizer = _get_gpt2()
+    model, tokenizer = get_perplexity_model()
     device = next(model.parameters()).device
 
     encodings = tokenizer(text, return_tensors="pt", truncation=True, max_length=max_length)
     input_ids = encodings.input_ids.to(device)
 
     if input_ids.shape[1] < 2:
-        return float("inf")
+        return math.exp(20)
 
     with torch.no_grad():
         outputs = model(input_ids, labels=input_ids)
@@ -60,12 +55,18 @@ def compute_entropy(text: str) -> float:
     return float(-sum((c / total) * math.log2(c / total) for c in counts.values()))
 
 
-def compute_ai_phrase_ratio(text: str) -> float:
-    text_lower = text.lower()
-    if not text_lower.split():
+def compute_ai_phrase_rate(text: str) -> float:
+    """Return non-overlapping AI phrase occurrences per 100 words."""
+    word_count = len(_WORD_PATTERN.findall(text))
+    if word_count == 0:
         return 0.0
-    hits = sum(1 for phrase in AI_PHRASES if phrase in text_lower)
-    return hits / len(AI_PHRASES)
+    hits = sum(1 for _ in _AI_PHRASE_PATTERN.finditer(text))
+    return float(hits * 100 / word_count)
+
+
+def compute_ai_phrase_ratio(text: str) -> float:
+    """Backward-compatible alias for the former public function."""
+    return compute_ai_phrase_rate(text)
 
 
 def compute_avg_sentence_length(text: str) -> float:
@@ -92,7 +93,7 @@ def extract_features(text: str) -> dict:
         "perplexity": compute_perplexity(text),
         "burstiness": compute_burstiness(text),
         "entropy": compute_entropy(text),
-        "ai_phrase_ratio": compute_ai_phrase_ratio(text),
+        "ai_phrase_rate": compute_ai_phrase_rate(text),
         "avg_sentence_length": compute_avg_sentence_length(text),
         "structural_regularity": compute_structural_regularity(text),
     }
