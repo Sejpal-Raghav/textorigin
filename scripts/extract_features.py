@@ -1,5 +1,5 @@
 import argparse
-import os
+from pathlib import Path
 
 import pandas as pd
 from tqdm import tqdm
@@ -18,17 +18,21 @@ def main():
     if args.sample:
         df = df.sample(n=min(args.sample, len(df)), random_state=42)
 
-    os.makedirs(os.path.dirname(args.output), exist_ok=True)
+    output = Path(args.output)
+    output.parent.mkdir(parents=True, exist_ok=True)
 
     features = []
     for text in tqdm(df["text"], desc="Extracting features"):
         features.append(extract_features(str(text)))
 
     feat_df = pd.DataFrame(features)
-    result = pd.concat([df[["text", "source"]].reset_index(drop=True), feat_df], axis=1)
-    result.to_csv(args.output, index=False)
+    identity_columns = ["text", "source"]
+    if "source_id" in df.columns:
+        identity_columns.append("source_id")
+    result = pd.concat([df[identity_columns].reset_index(drop=True), feat_df], axis=1)
+    result.to_csv(output, index=False)
 
-    print(f"\nSaved {len(result)} rows to {args.output}")
+    print(f"\nSaved {len(result)} rows to {output}")
     print(result.describe(include="all").to_string())
 
 

@@ -23,6 +23,7 @@ def test_load_raw_data_columns(mock_dataset):
 
     assert "text" in result.columns
     assert "source" in result.columns
+    assert "source_id" in result.columns
 
 
 def test_load_raw_data_classes(mock_dataset):
@@ -41,3 +42,12 @@ def test_load_raw_data_respects_sample_size(mock_dataset):
         result = load_raw_data(sample_size=30)
 
     assert len(result) <= 60  # 30 per class max
+
+
+def test_load_raw_data_source_ids_are_unique(mock_dataset):
+    with patch("src.data.loader.load_dataset", return_value=mock_dataset):
+        from src.data.loader import load_raw_data
+
+        result = load_raw_data(sample_size=50)
+
+    assert result["source_id"].is_unique

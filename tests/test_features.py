@@ -1,7 +1,9 @@
+import pytest
+
 from src.features.extractor import (
     compute_avg_sentence_length,
     compute_burstiness,
-    compute_ai_phrase_ratio,
+    compute_ai_phrase_rate,
     compute_entropy,
     compute_structural_regularity,
 )
@@ -36,15 +38,18 @@ def test_entropy_empty_string():
     assert compute_entropy("") == 0.0
 
 
-def test_ai_phrase_ratio_higher_for_ai_text():
-    human_ratio = compute_ai_phrase_ratio(HUMAN_TEXT)
-    ai_ratio = compute_ai_phrase_ratio(AI_TEXT)
-    assert ai_ratio > human_ratio
+def test_ai_phrase_rate_higher_for_ai_text():
+    human_rate = compute_ai_phrase_rate(HUMAN_TEXT)
+    ai_rate = compute_ai_phrase_rate(AI_TEXT)
+    assert ai_rate > human_rate
 
 
-def test_ai_phrase_ratio_between_0_and_1():
-    ratio = compute_ai_phrase_ratio(AI_TEXT)
-    assert 0.0 <= ratio <= 1.0
+def test_ai_phrase_rate_is_per_100_words():
+    assert compute_ai_phrase_rate("Delve into this topic with care.") == pytest.approx(100 / 6)
+
+
+def test_overlapping_ai_phrases_are_not_double_counted():
+    assert compute_ai_phrase_rate("Delve into this topic.") == pytest.approx(25.0)
 
 
 def test_avg_sentence_length_positive():

@@ -17,15 +17,20 @@ def main():
         try:
             with open(args.file, "r", encoding="utf-8") as f:
                 text = f.read()
-        except FileNotFoundError:
-            print(f"Error: file not found: {args.file}", file=sys.stderr)
+        except (OSError, UnicodeError) as exc:
+            print(f"Error: unable to read {args.file}: {exc}", file=sys.stderr)
             sys.exit(1)
     else:
         text = args.text
 
     from src.api.predictor import predict
+    from src.errors import TextOriginError
 
-    result = predict(text)
+    try:
+        result = predict(text)
+    except (TextOriginError, ValueError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(2)
 
     if args.json:
         print(json.dumps(result, indent=2))
@@ -41,10 +46,12 @@ def main():
         print(f"  {display:18}  {pct:5.1%}  {bar}")
     print()
 
-    if result.get("top_features"):
-        print("  Key signals detected:")
-        for feat in result["top_features"]:
+    if result.get("observed_signals"):
+        print("  Heuristic signals observed (separate from the model score):")
+        for feat in result["observed_signals"]:
             print(f"    • {feat}")
+    if result.get("truncated"):
+        print(f"  Warning: input was truncated to {result['analyzed_tokens']} tokens.")
     print()
 
 

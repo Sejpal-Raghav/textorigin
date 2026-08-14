@@ -1,5 +1,5 @@
 import argparse
-import os
+from pathlib import Path
 
 import pandas as pd
 
@@ -8,7 +8,8 @@ from src.data.paraphrase import generate_paraphrased_class
 
 
 def build_dataset(sample_size: int = 5000, output_path: str = "data/raw/combined.csv") -> pd.DataFrame:
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    output = Path(output_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
 
     print("Loading raw data from HuggingFace...")
     df = load_raw_data(sample_size=sample_size)
@@ -23,9 +24,9 @@ def build_dataset(sample_size: int = 5000, output_path: str = "data/raw/combined
 
     combined = pd.concat([human_df, ai_df, paraphrased_df], ignore_index=True)
     combined = combined.sample(frac=1, random_state=42).reset_index(drop=True)
-    combined.to_csv(output_path, index=False)
+    combined.to_csv(output, index=False)
 
-    print(f"\nSaved {len(combined)} total samples to {output_path}")
+    print(f"\nSaved {len(combined)} total samples to {output}")
     print(combined["source"].value_counts().to_string())
     return combined
 
