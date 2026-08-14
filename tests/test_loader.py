@@ -51,3 +51,21 @@ def test_load_raw_data_source_ids_are_unique(mock_dataset):
         result = load_raw_data(sample_size=50)
 
     assert result["source_id"].is_unique
+
+
+def test_load_raw_data_supports_current_string_source_schema():
+    dataset = MagicMock()
+    dataset.to_pandas.return_value = pd.DataFrame(
+        {
+            "id": range(200),
+            "text": [f"sample text {index}" for index in range(200)],
+            "source": ["human"] * 100 + ["ai"] * 100,
+        }
+    )
+    with patch("src.data.loader.load_dataset", return_value=dataset):
+        from src.data.loader import load_raw_data
+
+        result = load_raw_data(sample_size=20)
+
+    assert set(result["source"]) == {"human", "ai_written"}
+    assert result["source_id"].is_unique
