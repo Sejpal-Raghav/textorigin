@@ -81,6 +81,8 @@ Build the lineage-aware three-class dataset:
 python -m src.data.pipeline --sample-size 5000
 ```
 
+Paraphrases are appended to `data/raw/ai_paraphrased.checkpoint.csv` after every batch. Re-running the same command resumes the deterministic sample instead of discarding completed CPU/GPU work.
+
 Train directly from the text dataset:
 
 ```bash
