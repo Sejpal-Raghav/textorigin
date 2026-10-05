@@ -38,6 +38,19 @@ def main():
     parser.add_argument("--epochs", type=int, default=3)
     parser.add_argument("--max-length", type=int, default=256)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--train-batch-size", type=int, default=2)
+    parser.add_argument("--eval-batch-size", type=int, default=2)
+    parser.add_argument("--gradient-accumulation-steps", type=int, default=8)
+    parser.add_argument(
+        "--mixed-precision",
+        choices=("auto", "fp16", "bf16", "none"),
+        default="auto",
+    )
+    parser.add_argument(
+        "--no-gradient-checkpointing",
+        action="store_true",
+        help="Disable gradient checkpointing after a measured memory smoke test",
+    )
     args = parser.parse_args()
 
     data_path = Path(args.data).resolve()
@@ -60,7 +73,20 @@ def main():
     val_dataset = TextDataset(val_texts, val_labels, tokenizer, max_length=args.max_length)
     test_dataset = TextDataset(test_texts, test_labels, tokenizer, max_length=args.max_length)
 
-    trainer = get_trainer(model, tokenizer, train_dataset, val_dataset, args.output_dir, args.epochs)
+    trainer = get_trainer(
+        model,
+        tokenizer,
+        train_dataset,
+        val_dataset,
+        args.output_dir,
+        args.epochs,
+        train_batch_size=args.train_batch_size,
+        eval_batch_size=args.eval_batch_size,
+        gradient_accumulation_steps=args.gradient_accumulation_steps,
+        seed=args.seed,
+        gradient_checkpointing=not args.no_gradient_checkpointing,
+        mixed_precision=args.mixed_precision,
+    )
     trainer.train()
 
     trainer.save_model(args.output_dir)
@@ -85,6 +111,15 @@ def main():
         "max_length": args.max_length,
         "seed": args.seed,
         "epochs": args.epochs,
+        "train_batch_size": args.train_batch_size,
+        "eval_batch_size": args.eval_batch_size,
+        "gradient_accumulation_steps": args.gradient_accumulation_steps,
+        "effective_train_batch_size": (
+            args.train_batch_size * args.gradient_accumulation_steps
+        ),
+        "mixed_precision": args.mixed_precision,
+        "gradient_checkpointing": not args.no_gradient_checkpointing,
+        "device": "cuda" if __import__("torch").cuda.is_available() else "cpu",
         "split_sizes": {
             "train": len(train_df),
             "validation": len(val_df),
