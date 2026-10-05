@@ -15,13 +15,8 @@ class TextRequest(ApiModel):
     @field_validator("text")
     @classmethod
     def validate_text(cls, value: str) -> str:
-        settings = get_settings()
         if not value.strip():
             raise ValueError("Text cannot be empty")
-        if len(value) > settings.max_text_chars:
-            raise ValueError(
-                f"Text too long (max {settings.max_text_chars:,} characters)"
-            )
         return value
 
 
@@ -79,6 +74,8 @@ class HumanizeResponse(ApiModel):
     heuristic_similarity: float
     llm_similarity: float | None = None
     post_llm_metrics: FeatureMetrics | None = None
+    chunks_processed: int = Field(ge=1)
+    complete: bool
 
 
 class HealthResponse(ApiModel):
