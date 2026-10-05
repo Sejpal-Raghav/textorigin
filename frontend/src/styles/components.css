@@ -227,6 +227,68 @@
   margin-bottom: 16px;
 }
 
+.humanizer-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.humanizer-controls label,
+.credential-panel label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.humanizer-controls select,
+.credential-panel input {
+  width: 100%;
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 8px;
+  background: rgba(0,0,0,0.28);
+  color: var(--text-primary);
+  padding: 10px 12px;
+  font: inherit;
+}
+
+.credential-panel {
+  margin: 12px 0 18px;
+  padding: 14px;
+  border: 1px solid rgba(59,130,246,0.35);
+  border-radius: 10px;
+  background: rgba(59,130,246,0.08);
+}
+
+.privacy-note {
+  margin: 10px 0 0;
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.result-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.result-actions button {
+  border: 1px solid rgba(255,255,255,0.16);
+  border-radius: 8px;
+  background: rgba(255,255,255,0.07);
+  color: var(--text-primary);
+  padding: 9px 12px;
+}
+
+@media (max-width: 560px) {
+  .humanizer-controls {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* Spinner */
 .spinner {
   width: 20px;

@@ -4,7 +4,7 @@ import { useState } from 'react';
 
 import ClassificationResults from '../components/ClassificationResults';
 import HumanizePanel from '../components/HumanizePanel';
-import { classifyText, MAX_TEXT_CHARS } from '../lib/api';
+import { classifyText } from '../lib/api';
 import '../styles/components.css';
 
 export default function Home() {
@@ -40,11 +40,10 @@ export default function Home() {
             className="textarea"
             placeholder="Paste your text here to analyze..."
             value={text}
-            maxLength={MAX_TEXT_CHARS}
             onChange={(event) => setText(event.target.value)}
           />
           <div className="character-count">
-            {text.length.toLocaleString()} / {MAX_TEXT_CHARS.toLocaleString()}
+            {text.trim() ? text.trim().split(/\s+/).length.toLocaleString() : 0} words · {text.length.toLocaleString()} characters
           </div>
           <button className="primary-btn" onClick={handleClassify} disabled={loading || !text.trim()}>
             {loading ? <span className="spinner" aria-label="Analyzing" /> : 'Analyze Text'}
@@ -56,10 +55,6 @@ export default function Home() {
           <ClassificationResults results={results} />
           <HumanizePanel
             originalText={text}
-            onHumanizeComplete={(newText) => {
-              setText(newText);
-              setResults(null);
-            }}
           />
         </div>
       </div>

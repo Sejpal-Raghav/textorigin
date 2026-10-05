@@ -18,9 +18,12 @@ function Metric({ label, before, after }) {
   );
 }
 
-export default function HumanizePanel({ originalText, onHumanizeComplete }) {
+export default function HumanizePanel({ originalText }) {
   const [loading, setLoading] = useState(false);
-  const [useLlm, setUseLlm] = useState(true);
+  const [useDeepSeek, setUseDeepSeek] = useState(false);
+  const [style, setStyle] = useState('natural');
+  const [strength, setStrength] = useState('light');
+  const [apiKey, setApiKey] = useState('');
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
 
@@ -28,9 +31,13 @@ export default function HumanizePanel({ originalText, onHumanizeComplete }) {
     setLoading(true);
     setError('');
     try {
-      const data = await humanizeText(originalText, useLlm);
+      const data = await humanizeText(originalText, {
+        useDeepSeek,
+        style,
+        strength,
+        apiKey,
+      });
       setResult(data);
-      if (data.status !== 'unchanged') onHumanizeComplete?.(data.humanized_text);
     } catch (requestError) {
       setError(requestError.message);
     } finally {
@@ -40,18 +47,53 @@ export default function HumanizePanel({ originalText, onHumanizeComplete }) {
 
   return (
     <div className="humanize-panel">
-      <h3>AI to Human Converter</h3>
-      <p className="result-note">Rewrite while enforcing a server-side semantic similarity limit.</p>
+      <h3>Humanizer</h3>
+      <p className="result-note">Make controlled English edits while preserving meaning and protected content.</p>
+
+      <div className="humanizer-controls">
+        <label>
+          Style
+          <select value={style} onChange={(event) => setStyle(event.target.value)}>
+            <option value="natural">Natural</option>
+            <option value="formal">Formal</option>
+            <option value="casual">Casual</option>
+          </select>
+        </label>
+        <label>
+          Editing strength
+          <select value={strength} onChange={(event) => setStrength(event.target.value)}>
+            <option value="light">Light</option>
+            <option value="medium">Medium</option>
+          </select>
+        </label>
+      </div>
 
       <div className="toggle-container">
         <input
           type="checkbox"
-          id="llmToggle"
-          checked={useLlm}
-          onChange={(event) => setUseLlm(event.target.checked)}
+          id="deepSeekToggle"
+          checked={useDeepSeek}
+          onChange={(event) => setUseDeepSeek(event.target.checked)}
         />
-        <label htmlFor="llmToggle">Polish with Local LLM (Ollama)</label>
+        <label htmlFor="deepSeekToggle">Add minor DeepSeek polish</label>
       </div>
+
+      {useDeepSeek && (
+        <div className="credential-panel">
+          <label htmlFor="deepSeekKey">DeepSeek API key (optional when the server owner configured one)</label>
+          <input
+            id="deepSeekKey"
+            type="password"
+            autoComplete="off"
+            value={apiKey}
+            onChange={(event) => setApiKey(event.target.value)}
+            placeholder="sk-…"
+          />
+          <p className="privacy-note" role="note">
+            With polishing enabled, the editable text is sent to DeepSeek. This key stays in this page&apos;s memory and is sent only with this request.
+          </p>
+        </div>
+      )}
 
       <button className="primary-btn" onClick={handleHumanize} disabled={loading || !originalText.trim()}>
         {loading ? <span className="spinner" aria-label="Humanizing" /> : 'Humanize Text'}
@@ -68,9 +110,26 @@ export default function HumanizePanel({ originalText, onHumanizeComplete }) {
           </div>
 
           <div className="diff-view">{result.humanized_text}</div>
+          <div className="result-actions">
+            <button type="button" onClick={() => navigator.clipboard.writeText(result.humanized_text)}>Copy result</button>
+            <button
+              type="button"
+              onClick={() => {
+                const url = URL.createObjectURL(new Blob([result.humanized_text], { type: 'text/plain;charset=utf-8' }));
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = 'textorigin-humanized.txt';
+                link.click();
+                URL.revokeObjectURL(url);
+              }}
+            >
+              Download .txt
+            </button>
+          </div>
           <div className="pipeline-stats">
             <strong>Pipeline status: {result.status.replaceAll('_', ' ')}</strong>
             <ul>
+              <li>Style: {result.style}; strength: {result.strength}</li>
               <li>Heuristic similarity: {result.heuristic_similarity.toFixed(3)}</li>
               {result.llm_similarity !== null && <li>LLM similarity: {result.llm_similarity.toFixed(3)}</li>}
               <li>Required similarity: {result.similarity_threshold.toFixed(2)}</li>
