@@ -2,10 +2,6 @@ const API_BASE_URL = (
   process.env.NEXT_PUBLIC_TEXTORIGIN_API_URL || 'http://localhost:8000'
 ).replace(/\/$/, '');
 
-export const MAX_TEXT_CHARS = Number(
-  process.env.NEXT_PUBLIC_TEXTORIGIN_MAX_TEXT_CHARS || 10_000
-);
-
 function errorMessage(payload, fallback) {
   if (payload?.error?.detail) return payload.error.detail;
   if (typeof payload?.detail === 'string') return payload.detail;
@@ -44,6 +40,12 @@ export function classifyText(text) {
   return post('/classify', { text, include_signals: true }, 60_000);
 }
 
-export function humanizeText(text, useLlm) {
-  return post('/humanize', { text, use_llm: useLlm }, 75_000);
+export function humanizeText(text, options) {
+  return post('/humanize', {
+    text,
+    use_llm: options.useDeepSeek,
+    style: options.style,
+    strength: options.strength,
+    ...(options.apiKey ? { deepseek_api_key: options.apiKey } : {}),
+  }, 75_000);
 }
