@@ -63,3 +63,28 @@ def test_cli_refuses_to_overwrite_output(tmp_path, capsys):
     assert code == 2
     assert output.read_text(encoding="utf-8") == "keep"
     assert "--force" in capsys.readouterr().err
+
+
+def test_cli_deepseek_mode_uses_shared_service(monkeypatch, capsys):
+    monkeypatch.setattr(
+        "src.cli._deepseek_rewrite",
+        lambda text, style, strength: {
+            "humanized_text": "Polished.",
+            "status": "accepted_llm",
+            "warnings": [],
+            "complete": True,
+        },
+    )
+    code = main([
+        "rewrite",
+        "--text",
+        "Original.",
+        "--provider",
+        "deepseek",
+        "--format",
+        "json",
+    ])
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert payload["provider"] == "deepseek"
+    assert payload["status"] == "accepted_llm"

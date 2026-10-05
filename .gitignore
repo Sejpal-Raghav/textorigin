@@ -10,6 +10,7 @@ build/
 .venv
 venv/
 env/
+.wheeltest/
 
 # Data & Models (too large for git)
 data/raw/
