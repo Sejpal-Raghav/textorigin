@@ -1,97 +1,56 @@
 from __future__ import annotations
 
-import hashlib
 import logging
-import random
-import re
 from time import perf_counter
+from typing import Protocol
 
 from src.errors import ExternalServiceError
 from src.features.extractor import extract_features
 from src.inference.similarity import SimilarityEngine
-from src.integrations.ollama import OllamaClient
 from src.services.capacity import InferenceCapacity
+from src.services.rewrite import (
+    RewriteStrength,
+    RewriteStyle,
+    protected_spans_preserved,
+    rewrite_document,
+)
 
 LOGGER = logging.getLogger(__name__)
 
-PHRASE_REPLACEMENTS = {
-    "delve into": "examine",
-    "it's worth noting": "",
-    "it is worth noting": "",
-    "it's important to note": "",
-    "it is important to note": "",
-    "in conclusion": "",
-    "in summary": "",
-    "to summarize": "",
-    "furthermore": "also",
-    "moreover": "also",
-    "in the realm of": "in",
-    "as previously mentioned": "",
-    "utilize": "use",
-    "facilitate": "help",
-    "moving forward": "later",
-    "at the end of the day": "ultimately",
-}
+class Polisher(Protocol):
+    def polish(
+        self,
+        text: str,
+        *,
+        style: RewriteStyle,
+        strength: RewriteStrength,
+        api_key: str | None = None,
+    ) -> str: ...
 
 
-def _default_seed(text: str) -> int:
-    return int.from_bytes(hashlib.sha256(text.encode("utf-8")).digest()[:8], "big")
-
-
-def heuristic_rewrite(text: str, seed: int | None = None) -> str:
-    """Apply conservative, deterministic style edits without synonym guessing."""
-    for phrase, replacement in sorted(
-        PHRASE_REPLACEMENTS.items(), key=lambda item: len(item[0]), reverse=True
-    ):
-        text = re.sub(
-            rf"\b{re.escape(phrase)}\b", replacement, text, flags=re.IGNORECASE
-        )
-    text = re.sub(r"\s+", " ", text)
-    text = re.sub(r"\s+([,.;!?])", r"\1", text).strip()
-    text = re.sub(r"^([a-z])", lambda match: match.group(1).upper(), text)
-
-    rng = random.Random(seed if seed is not None else _default_seed(text))
-    sentences = [part.strip() for part in re.split(r"(?<=[.!?])\s+", text) if part.strip()]
-    rewritten: list[str] = []
-    index = 0
-    while index < len(sentences):
-        sentence = sentences[index]
-        if (
-            index + 1 < len(sentences)
-            and len(sentence.split()) < 10
-            and len(sentences[index + 1].split()) < 10
-            and rng.random() < 0.35
-        ):
-            joiner = rng.choice((" and ", " but ", "; "))
-            joined = sentence.rstrip(".!?") + joiner + sentences[index + 1][0].lower() + sentences[index + 1][1:]
-            rewritten.append(joined)
-            index += 2
-            continue
-        if len(sentence.split()) > 25:
-            for separator in (", and ", "; "):
-                if separator in sentence:
-                    first, second = sentence.split(separator, 1)
-                    rewritten.extend((first.rstrip() + ".", second[:1].upper() + second[1:]))
-                    break
-            else:
-                rewritten.append(sentence)
-        else:
-            rewritten.append(sentence)
-        index += 1
-    return " ".join(rewritten)
+def heuristic_rewrite(
+    text: str,
+    seed: int | None = None,
+    *,
+    style: RewriteStyle = "natural",
+    strength: RewriteStrength = "light",
+) -> str:
+    """Compatibility facade for the deterministic document rewriter."""
+    del seed
+    return rewrite_document(text, style=style, strength=strength)
 
 
 class HumanizationService:
     def __init__(
         self,
         similarity: SimilarityEngine,
-        ollama: OllamaClient,
+        polisher: Polisher,
         capacity: InferenceCapacity,
         default_threshold: float,
         minimum_threshold: float,
     ):
         self.similarity = similarity
-        self.ollama = ollama
+        self.polisher = polisher
         self.capacity = capacity
         self.default_threshold = default_threshold
         self.minimum_threshold = minimum_threshold
@@ -102,6 +61,9 @@ class HumanizationService:
         use_llm: bool = True,
         similarity_threshold: float | None = None,
         seed: int | None = None,
+        style: RewriteStyle = "natural",
+        strength: RewriteStrength = "light",
+        api_key: str | None = None,
     ) -> dict:
         threshold = self.default_threshold if similarity_threshold is None else similarity_threshold
         if not self.minimum_threshold <= threshold <= 1:
@@ -113,7 +75,9 @@ class HumanizationService:
         warnings: list[str] = []
         with self.capacity.claim():
             original_metrics = extract_features(text)
-            heuristic_text = heuristic_rewrite(text, seed=seed)
+            heuristic_text = heuristic_rewrite(
+                text, seed=seed, style=style, strength=strength
+            )
             heuristic_metrics = extract_features(heuristic_text)
             heuristic_similarity = self.similarity.compare(text, heuristic_text)
 
@@ -129,7 +93,14 @@ class HumanizationService:
             llm_metrics = None
             if use_llm:
                 try:
-                    llm_text = self.ollama.polish(accepted_text)
+                    llm_text = self.polisher.polish(
+                        accepted_text,
+                        style=style,
+                        strength=strength,
+                        api_key=api_key,
+                    )
+                    if not protected_spans_preserved(text, llm_text):
+                        raise ExternalServiceError("Polisher changed protected content")
                     llm_similarity = self.similarity.compare(text, llm_text)
                     if llm_similarity >= threshold:
                         accepted_text = llm_text
@@ -138,7 +109,7 @@ class HumanizationService:
                     else:
                         warnings.append("llm_similarity_below_threshold")
                 except ExternalServiceError:
-                    warnings.append("ollama_unavailable")
+                    warnings.append("polisher_unavailable")
 
         LOGGER.info(
             "humanization_completed duration_seconds=%.3f status=%s warning_count=%d",
@@ -152,6 +123,8 @@ class HumanizationService:
             "status": status,
             "warnings": warnings,
             "similarity_threshold": threshold,
+            "style": style,
+            "strength": strength,
             "original_metrics": original_metrics,
             "post_heuristic_metrics": heuristic_metrics,
             "heuristic_similarity": heuristic_similarity,

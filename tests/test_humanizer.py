@@ -56,12 +56,12 @@ def test_unsafe_heuristic_falls_back_to_original(_extract):
 
 
 @patch("src.services.humanization.extract_features", return_value=METRICS)
-def test_ollama_failure_returns_safe_fallback(_extract):
+def test_polisher_failure_returns_safe_fallback(_extract):
     service, ollama = make_service([0.90])
     ollama.polish.side_effect = ExternalServiceError("offline")
     result = service.humanize("Original text.")
     assert result["status"] == "accepted_heuristic"
-    assert "ollama_unavailable" in result["warnings"]
+    assert "polisher_unavailable" in result["warnings"]
 
 
 def test_threshold_cannot_be_weakened_below_server_minimum():
