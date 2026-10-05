@@ -12,7 +12,7 @@ This ledger applies the approved `SPEC.md`, `BACKLOG.md`, and `IMPLEMENTATION-HA
 | Wheel/clean install | Done for local rewrite | Built `textorigin_humanizer-0.2.0-py3-none-any.whl`; installed without source-tree access; command produced valid JSON | pending docs commit |
 | GitHub push | Blocked | Local GitHub credential is invalid; commits remain local until authentication is restored | — |
 
-Current focused verification: 34 tests pass. The frontend production build completed and emitted `.next/BUILD_ID`. One upstream Starlette deprecation warning is present in API tests.
+Current focused verification: 35 tests pass. The frontend production build completed and emitted `.next/BUILD_ID`. One upstream Starlette deprecation warning is present in API tests. The full legacy suite currently stops during collection because tomorrow's training environment dependencies (`numpy` and `pandas`, followed by the pinned model stack) are deliberately not installed in this lightweight application environment.
 
 The trained classifier artifact does not exist yet. `classify` and `compare` therefore remain intentionally unavailable in a real demo. No mock classifier output may be presented as real.
 
