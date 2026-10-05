@@ -52,6 +52,13 @@ def humanize(
         use_llm=payload.use_llm,
         similarity_threshold=payload.similarity_threshold,
         seed=payload.seed,
+        style=payload.style,
+        strength=payload.strength,
+        api_key=(
+            payload.deepseek_api_key.get_secret_value()
+            if payload.deepseek_api_key is not None
+            else None
+        ),
     )
 
 
@@ -63,9 +70,14 @@ def health():
 @router.get("/ready")
 def ready(request: Request):
     classifier = request.app.state.services.classifier.readiness()
+    settings = get_settings()
     payload = {
         "status": "ready" if classifier["ready"] else "not_ready",
         "classifier": classifier,
-        "optional_capabilities": {"ollama_configured": True},
+        "optional_capabilities": {
+            "local_rewrite": True,
+            "deepseek_owner_key_configured": bool(settings.deepseek_api_key),
+            "deepseek_byok_supported": True,
+        },
     }
     return JSONResponse(payload, status_code=200 if classifier["ready"] else 503)

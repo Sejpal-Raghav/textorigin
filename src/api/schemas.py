@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 
 from src.config import get_settings
 
@@ -51,6 +51,9 @@ class FeatureMetrics(ApiModel):
 
 class HumanizeRequest(TextRequest):
     use_llm: bool = True
+    style: Literal["natural", "formal", "casual"] = "natural"
+    strength: Literal["light", "medium"] = "light"
+    deepseek_api_key: SecretStr | None = None
     similarity_threshold: float | None = Field(default=None, ge=0, le=1)
     seed: int | None = None
 
@@ -69,6 +72,8 @@ class HumanizeResponse(ApiModel):
     status: Literal["unchanged", "accepted_heuristic", "accepted_llm"]
     warnings: list[str]
     similarity_threshold: float
+    style: Literal["natural", "formal", "casual"]
+    strength: Literal["light", "medium"]
     original_metrics: FeatureMetrics
     post_heuristic_metrics: FeatureMetrics
     heuristic_similarity: float

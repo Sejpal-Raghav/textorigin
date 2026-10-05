@@ -7,7 +7,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from src.api.routes import router
-from src.bootstrap import build_services
 from src.config import get_settings
 from src.errors import InferenceCapacityError, ModelUnavailableError
 
@@ -21,7 +20,12 @@ def create_app(services=None) -> FastAPI:
             level=getattr(logging, settings.log_level, logging.INFO),
             format="%(asctime)s %(levelname)s %(name)s %(message)s",
         )
-        app.state.services = services or build_services(settings)
+        if services is None:
+            from src.bootstrap import build_services
+
+            app.state.services = build_services(settings)
+        else:
+            app.state.services = services
         readiness = app.state.services.classifier.readiness()
         if not readiness["ready"]:
             logging.getLogger(__name__).warning(
