@@ -40,6 +40,8 @@ class FakeHumanizationService:
             "status": "accepted_heuristic",
             "warnings": [],
             "similarity_threshold": 0.85,
+            "style": "natural",
+            "strength": "light",
             "original_metrics": METRICS,
             "post_heuristic_metrics": METRICS,
             "heuristic_similarity": 0.91,
@@ -106,6 +108,22 @@ def test_humanize_contract():
     assert response.status_code == 200
     assert response.json()["status"] == "accepted_heuristic"
     assert response.json()["heuristic_similarity"] == 0.91
+    assert response.json()["style"] == "natural"
+
+
+def test_humanize_accepts_style_strength_and_byok_without_echoing_key():
+    with make_client() as client:
+        response = client.post(
+            "/humanize",
+            json={
+                "text": "A passage that can be safely revised.",
+                "style": "formal",
+                "strength": "medium",
+                "deepseek_api_key": "secret-value",
+            },
+        )
+    assert response.status_code == 200
+    assert "secret-value" not in response.text
 
 
 def test_humanize_threshold_cannot_weaken_server_policy():

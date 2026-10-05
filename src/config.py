@@ -43,9 +43,10 @@ class Settings:
     max_concurrent_inferences: int
     inference_wait_seconds: float
     include_signals_by_default: bool
-    ollama_host: str
-    ollama_model: str
-    ollama_timeout_seconds: float
+    deepseek_base_url: str
+    deepseek_model: str
+    deepseek_api_key: str | None
+    deepseek_timeout_seconds: float
     log_level: str
 
     @property
@@ -83,9 +84,14 @@ def get_settings() -> Settings:
         include_signals_by_default=_env_bool(
             "TEXTORIGIN_INCLUDE_SIGNALS", False
         ),
-        ollama_host=os.getenv("OLLAMA_HOST", "http://localhost:11434").rstrip("/"),
-        ollama_model=os.getenv("TEXTORIGIN_OLLAMA_MODEL", "llama3:8b-instruct"),
-        ollama_timeout_seconds=_env_float("TEXTORIGIN_OLLAMA_TIMEOUT_SECONDS", 60.0),
+        deepseek_base_url=os.getenv(
+            "TEXTORIGIN_DEEPSEEK_BASE_URL", "https://api.deepseek.com"
+        ).rstrip("/"),
+        deepseek_model=os.getenv("TEXTORIGIN_DEEPSEEK_MODEL", "deepseek-chat"),
+        deepseek_api_key=os.getenv("DEEPSEEK_API_KEY"),
+        deepseek_timeout_seconds=_env_float(
+            "TEXTORIGIN_DEEPSEEK_TIMEOUT_SECONDS", 60.0
+        ),
         log_level=os.getenv("TEXTORIGIN_LOG_LEVEL", "INFO").upper(),
     )
     if settings.max_text_chars < 1:

@@ -5,8 +5,6 @@ from time import perf_counter
 from typing import Protocol
 
 from src.errors import ExternalServiceError
-from src.features.extractor import extract_features
-from src.inference.similarity import SimilarityEngine
 from src.services.capacity import InferenceCapacity
 from src.services.rewrite import (
     RewriteStrength,
@@ -28,6 +26,17 @@ class Polisher(Protocol):
     ) -> str: ...
 
 
+class SimilarityValidator(Protocol):
+    def compare(self, text1: str, text2: str) -> float: ...
+
+
+def extract_features(text: str) -> dict:
+    """Lazy import keeps the CLI and API schemas free of model imports."""
+    from src.features.extractor import extract_features as implementation
+
+    return implementation(text)
+
+
 def heuristic_rewrite(
     text: str,
     seed: int | None = None,
@@ -43,7 +52,7 @@ def heuristic_rewrite(
 class HumanizationService:
     def __init__(
         self,
-        similarity: SimilarityEngine,
+        similarity: SimilarityValidator,
         polisher: Polisher,
         capacity: InferenceCapacity,
         default_threshold: float,
