@@ -2,19 +2,19 @@
 
 TextOrigin is a local-first text-origin classifier and rewriting tool. A fine-tuned RoBERTa model produces scores for human-written, AI-written, and AI-paraphrased text. Separate linguistic observations describe the input but do not cause or explain the classifier score.
 
-The optional humanizer applies conservative deterministic edits, verifies their semantic similarity, and can ask a local Ollama model for a polished candidate. Both stages must meet a server-controlled similarity threshold or the original text is returned.
+The humanizer applies conservative deterministic edits, verifies each bounded chunk for semantic similarity, and can optionally ask DeepSeek for a minor polished candidate. Both stages must meet a server-controlled similarity threshold or the last accepted text is returned. DeepSeek is only an editing stage; classification stays local.
 
 ## Architecture
 
 ```text
 Offline: Hugging Face data -> source lineage -> paraphrases -> grouped split -> RoBERTa -> model manifest
-Runtime: Next.js / CLI -> FastAPI routes -> application services -> model adapters / Ollama
+Runtime: Next.js / CLI -> FastAPI routes -> application services -> local model adapters / optional DeepSeek polish
 ```
 
 - `src/api`: HTTP routes, schemas, application lifecycle, and compatibility facades
 - `src/services`: classification and humanization policy
 - `src/inference`: synchronized RoBERTa, GPT-2, and MiniLM adapters
-- `src/integrations`: optional Ollama client
+- `src/integrations`: optional DeepSeek polish adapter
 - `src/data`, `src/model`, `scripts`: offline data and training workflow
 - `frontend`: Next.js interface
 - `tests`: unit and API contract tests that do not download models
@@ -34,6 +34,8 @@ Classification requires a trained artifact at `models/roberta-classifier` by def
 The feature and similarity models use pinned Hugging Face revisions and are downloaded by their libraries on first use. For an offline deployment, pre-populate the Hugging Face cache during provisioning. Runtime imports never download NLTK or model resources.
 
 Use `.env.example` as a reference and set variables in the process environment when defaults are unsuitable. The Python application does not implicitly load `.env` files. Relative model paths are resolved from the repository, independently of the shell working directory.
+
+Set `DEEPSEEK_API_KEY` only when the optional polish stage should use an owner-provided key. Web users can instead provide a request-scoped key. A supplied user key takes precedence and is never silently replaced by the owner key after an authentication failure. Text is sent to DeepSeek only when polishing is enabled.
 
 Start the API:
 
@@ -59,11 +61,14 @@ Open `http://localhost:3000`. Set `NEXT_PUBLIC_TEXTORIGIN_API_URL` at frontend b
 ## CLI
 
 ```bash
-python classify.py --text "Text to inspect."
-python classify.py --file sample.txt --json
+pip install ./dist/textorigin_humanizer-0.2.0-py3-none-any.whl
+humanizer rewrite --text "It is worth noting that we utilize this."
+humanizer rewrite --file sample.txt --style formal --strength medium --output revised.txt
+humanizer classify --file sample.txt --format json
+humanizer compare --file sample.txt --style natural --strength light --format json
 ```
 
-The displayed percentages are model scores, not calibrated confidence estimates. Very short or truncated inputs include warnings.
+`rewrite` works without a trained classifier. `classify` and `compare` return a model-unavailable error until the trained artifact is installed. The displayed percentages are model scores, not calibrated confidence estimates. The original `python classify.py` command remains available as a compatibility interface.
 
 ## Build and train
 
@@ -115,10 +120,20 @@ cd frontend
 npm run build
 ```
 
-Unit and API contract tests use fake services, so they do not require a trained classifier, Ollama, or downloaded transformer weights.
+Build and smoke-test the local wheel:
+
+```bash
+python -m build --wheel
+pip install --force-reinstall dist/textorigin_humanizer-0.2.0-py3-none-any.whl
+humanizer rewrite --text "It is worth noting that we utilize this."
+```
+
+See `docs/IMPLEMENTATION_STATUS.md` for the current spec-driven backlog evidence and known incomplete work.
+
+Unit and API contract tests use fake services, so they do not require a trained classifier, a DeepSeek key, or downloaded transformer weights.
 
 ## Deployment and security boundary
 
 The default configuration is intended for a trusted local workstation. It does not provide user authentication or rate limiting. Do not bind it directly to an untrusted network. If remote access is required, terminate TLS and enforce authentication and request limits at a trusted reverse proxy or deployment edge.
 
-The backend limits text size and concurrent inference, uses a finite Ollama timeout, does not log submitted text, and restricts CORS to the configured frontend origins. Keep `TEXTORIGIN_MAX_CONCURRENT_INFERENCES=1` unless measured GPU/CPU capacity supports more; each server worker owns its own model copies.
+The backend processes long rewrite inputs in bounded chunks, limits concurrent inference, uses a finite DeepSeek timeout, does not log submitted text or credentials, and restricts CORS to the configured frontend origins. Inputs are constrained by available memory and provider context limits rather than a product word limit. Keep `TEXTORIGIN_MAX_CONCURRENT_INFERENCES=1` unless measured GPU/CPU capacity supports more; each server worker owns its own model copies.

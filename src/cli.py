@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -20,6 +21,12 @@ def _parser() -> argparse.ArgumentParser:
     inputs.add_argument("--file", type=Path, help="UTF-8 text file to rewrite")
     rewrite.add_argument("--style", choices=("natural", "formal", "casual"), default="natural")
     rewrite.add_argument("--strength", choices=("light", "medium"), default="light")
+    rewrite.add_argument(
+        "--provider",
+        choices=("local", "deepseek"),
+        default="local",
+        help="Optional polish provider; DeepSeek sends text externally",
+    )
     rewrite.add_argument("--format", choices=("text", "json"), default="text")
     rewrite.add_argument("--output", type=Path, help="Write output to this file")
     rewrite.add_argument("--force", action="store_true", help="Replace an existing output file")
@@ -82,27 +89,72 @@ def _display_scores(scores: dict) -> str:
     )
 
 
+def _interactive_args() -> list[str]:
+    print("TextOrigin Humanizer")
+    operation = input("Operation [rewrite/classify/compare] (rewrite): ").strip() or "rewrite"
+    text = input("Text: ")
+    args = [operation, "--text", text]
+    if operation in {"rewrite", "compare"}:
+        style = input("Style [natural/formal/casual] (natural): ").strip() or "natural"
+        strength = input("Strength [light/medium] (light): ").strip() or "light"
+        args.extend(["--style", style, "--strength", strength])
+    if operation == "rewrite":
+        provider = input("Provider [local/deepseek] (local): ").strip() or "local"
+        args.extend(["--provider", provider])
+    return args
+
+
+def _deepseek_rewrite(text: str, style: str, strength: str) -> dict:
+    from src.bootstrap import build_services
+    from src.config import get_settings
+
+    services = build_services(get_settings())
+    try:
+        return services.humanization.humanize(
+            text,
+            use_llm=True,
+            style=style,
+            strength=strength,
+            api_key=os.getenv("DEEPSEEK_API_KEY"),
+        )
+    finally:
+        services.close()
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = _parser()
     args = parser.parse_args(argv)
     if args.command is None:
+        if argv is None and sys.stdin.isatty():
+            return main(_interactive_args())
         parser.print_help()
         return 2
     try:
         text = _read_text(args)
         if args.command == "rewrite":
-            revised = rewrite_document(text, style=args.style, strength=args.strength)
+            if args.provider == "deepseek":
+                result = _deepseek_rewrite(text, args.style, args.strength)
+                revised = result["humanized_text"]
+            else:
+                revised = rewrite_document(text, style=args.style, strength=args.strength)
+                result = {
+                    "status": "completed",
+                    "warnings": [],
+                    "complete": True,
+                }
             rendered = (
                 json.dumps(
                     {
                         "schema_version": "1.0",
                         "operation": "rewrite",
-                        "status": "completed",
+                        "status": result["status"],
                         "style": args.style,
                         "strength": args.strength,
-                        "provider": "local",
+                        "provider": args.provider,
                         "original_text": text,
                         "humanized_text": revised,
+                        "warnings": result.get("warnings", []),
+                        "complete": result.get("complete", True),
                     },
                     ensure_ascii=False,
                 )
