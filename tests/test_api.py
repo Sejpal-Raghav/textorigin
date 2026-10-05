@@ -47,6 +47,8 @@ class FakeHumanizationService:
             "heuristic_similarity": 0.91,
             "llm_similarity": None,
             "post_llm_metrics": None,
+            "chunks_processed": 1,
+            "complete": True,
         }
 
 
@@ -90,7 +92,11 @@ def test_classify_can_skip_expensive_signals():
 def test_invalid_text_returns_422():
     with make_client() as client:
         assert client.post("/classify", json={"text": "   "}).status_code == 422
-        assert client.post("/classify", json={"text": "x" * 10_001}).status_code == 422
+
+
+def test_api_has_no_fixed_character_cap():
+    with make_client() as client:
+        assert client.post("/classify", json={"text": "x" * 10_001}).status_code == 200
 
 
 def test_unknown_request_fields_are_rejected():

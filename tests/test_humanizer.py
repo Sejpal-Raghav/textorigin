@@ -51,7 +51,7 @@ def test_unsafe_heuristic_falls_back_to_original(_extract):
     result = service.humanize("Original meaning.", use_llm=False)
     assert result["status"] == "unchanged"
     assert result["humanized_text"] == "Original meaning."
-    assert "heuristic_similarity_below_threshold" in result["warnings"]
+    assert "chunk_1_heuristic_rejected" in result["warnings"]
     ollama.polish.assert_not_called()
 
 
@@ -60,8 +60,8 @@ def test_polisher_failure_returns_safe_fallback(_extract):
     service, ollama = make_service([0.90])
     ollama.polish.side_effect = ExternalServiceError("offline")
     result = service.humanize("Original text.")
-    assert result["status"] == "accepted_heuristic"
-    assert "polisher_unavailable" in result["warnings"]
+    assert result["status"] == "unchanged"
+    assert "chunk_1_polisher_unavailable" in result["warnings"]
 
 
 def test_threshold_cannot_be_weakened_below_server_minimum():

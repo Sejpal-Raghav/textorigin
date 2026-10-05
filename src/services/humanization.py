@@ -6,6 +6,7 @@ from typing import Protocol
 
 from src.errors import ExternalServiceError
 from src.services.capacity import InferenceCapacity
+from src.services.document import document_chunks
 from src.services.rewrite import (
     RewriteStrength,
     RewriteStyle,
@@ -84,41 +85,70 @@ class HumanizationService:
         warnings: list[str] = []
         with self.capacity.claim():
             original_metrics = extract_features(text)
-            heuristic_text = heuristic_rewrite(
-                text, seed=seed, style=style, strength=strength
-            )
+            accepted_chunks: list[str] = []
+            heuristic_chunks: list[str] = []
+            heuristic_scores: list[tuple[float, int]] = []
+            llm_scores: list[tuple[float, int]] = []
+            accepted_heuristic = False
+            accepted_llm = False
+            chunks = document_chunks(text)
+            for index, original_chunk in enumerate(chunks, start=1):
+                if not original_chunk.strip():
+                    heuristic_chunks.append(original_chunk)
+                    accepted_chunks.append(original_chunk)
+                    continue
+                heuristic_chunk = heuristic_rewrite(
+                    original_chunk, seed=seed, style=style, strength=strength
+                )
+                heuristic_chunks.append(heuristic_chunk)
+                heuristic_score = self.similarity.compare(
+                    original_chunk, heuristic_chunk
+                )
+                weight = max(len(original_chunk), 1)
+                heuristic_scores.append((heuristic_score, weight))
+                accepted_chunk = original_chunk
+                if heuristic_score >= threshold and protected_spans_preserved(
+                    original_chunk, heuristic_chunk
+                ):
+                    accepted_chunk = heuristic_chunk
+                    accepted_heuristic = accepted_heuristic or heuristic_chunk != original_chunk
+                else:
+                    warnings.append(f"chunk_{index}_heuristic_rejected")
+
+                if use_llm:
+                    try:
+                        llm_text = self.polisher.polish(
+                            accepted_chunk,
+                            style=style,
+                            strength=strength,
+                            api_key=api_key,
+                        )
+                        if not protected_spans_preserved(original_chunk, llm_text):
+                            raise ExternalServiceError("Polisher changed protected content")
+                        llm_score = self.similarity.compare(original_chunk, llm_text)
+                        llm_scores.append((llm_score, weight))
+                        if llm_score >= threshold:
+                            accepted_chunk = llm_text
+                            accepted_llm = accepted_llm or llm_text != original_chunk
+                        else:
+                            warnings.append(f"chunk_{index}_llm_similarity_below_threshold")
+                    except ExternalServiceError:
+                        warnings.append(f"chunk_{index}_polisher_unavailable")
+                accepted_chunks.append(accepted_chunk)
+
+            heuristic_text = "".join(heuristic_chunks)
             heuristic_metrics = extract_features(heuristic_text)
-            heuristic_similarity = self.similarity.compare(text, heuristic_text)
-
-            accepted_text = text
-            status = "unchanged"
-            if heuristic_similarity >= threshold:
-                accepted_text = heuristic_text
-                status = "accepted_heuristic"
-            else:
-                warnings.append("heuristic_similarity_below_threshold")
-
-            llm_similarity = None
-            llm_metrics = None
-            if use_llm:
-                try:
-                    llm_text = self.polisher.polish(
-                        accepted_text,
-                        style=style,
-                        strength=strength,
-                        api_key=api_key,
-                    )
-                    if not protected_spans_preserved(text, llm_text):
-                        raise ExternalServiceError("Polisher changed protected content")
-                    llm_similarity = self.similarity.compare(text, llm_text)
-                    if llm_similarity >= threshold:
-                        accepted_text = llm_text
-                        llm_metrics = extract_features(llm_text)
-                        status = "accepted_llm"
-                    else:
-                        warnings.append("llm_similarity_below_threshold")
-                except ExternalServiceError:
-                    warnings.append("polisher_unavailable")
+            heuristic_similarity = _weighted_mean(heuristic_scores)
+            accepted_text = "".join(accepted_chunks)
+            status = (
+                "accepted_llm"
+                if accepted_llm
+                else "accepted_heuristic"
+                if accepted_heuristic
+                else "unchanged"
+            )
+            llm_similarity = _weighted_mean(llm_scores) if llm_scores else None
+            llm_metrics = extract_features(accepted_text) if accepted_llm else None
 
         LOGGER.info(
             "humanization_completed duration_seconds=%.3f status=%s warning_count=%d",
@@ -139,4 +169,13 @@ class HumanizationService:
             "heuristic_similarity": heuristic_similarity,
             "llm_similarity": llm_similarity,
             "post_llm_metrics": llm_metrics,
+            "chunks_processed": len(chunks),
+            "complete": True,
         }
+
+
+def _weighted_mean(values: list[tuple[float, int]]) -> float:
+    if not values:
+        return 1.0
+    total_weight = sum(weight for _value, weight in values)
+    return sum(value * weight for value, weight in values) / total_weight
