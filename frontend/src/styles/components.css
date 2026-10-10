@@ -302,3 +302,19 @@
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+
+
+button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-visible {
+  outline: 3px solid var(--accent-blue); outline-offset: 3px;
+}
+.operation-actions { display: flex; flex-wrap: wrap; gap: 12px; }
+.capability-status { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.capability-status button, .editor-wrapper > button, .credential-panel button {
+  padding: 10px 12px; border: 1px solid rgba(255,255,255,.25); border-radius: 8px;
+  background: rgba(255,255,255,.07); color: var(--text-primary);
+}
+progress { display: block; width: 100%; margin-top: 8px; }
+table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: .9rem; }
+th, td { text-align: left; padding: 8px 5px; border-bottom: 1px solid rgba(255,255,255,.14); }
+.diff-view { overflow-wrap: anywhere; }
+@media (max-width: 560px) { .capability-status { flex-direction: column; align-items: flex-start; } }
