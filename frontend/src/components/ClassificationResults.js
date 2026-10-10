@@ -27,6 +27,7 @@ export default function ClassificationResults({ results }) {
         </div>
       ))}
 
+      {!results.truncated && <p className="result-note">{results.analyzed_tokens} content tokens analyzed across {results.window_count || 1} windows.</p>}
       {results.truncated && (
         <p className="warning-message" role="status">
           Only the first {results.analyzed_tokens} tokens were analyzed.
