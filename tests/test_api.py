@@ -16,7 +16,7 @@ METRICS = {
 
 
 class FakeClassificationService:
-    def classify(self, _text, include_signals=True):
+    def classify(self, _text, include_signals=True, context=None):
         return {
             "scores": {"human": 0.12, "ai_written": 0.71, "ai_paraphrased": 0.17},
             "observed_signals": ["low burstiness"] if include_signals else [],
@@ -28,7 +28,7 @@ class FakeClassificationService:
 
 
 class UnavailableClassificationService:
-    def classify(self, _text, include_signals=True):
+    def classify(self, _text, include_signals=True, context=None):
         raise ModelUnavailableError("test model missing")
 
 

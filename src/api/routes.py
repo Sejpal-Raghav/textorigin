@@ -8,7 +8,9 @@ from src.api.schemas import (
     HumanizeRequest,
     HumanizeResponse,
 )
+from src.api.schemas import CompareRequest, CompareResponse, JobRequest, JobResponse
 from src.config import get_settings
+from src.services.comparison import ComparisonService
 from src.services.classification import ClassificationService
 from src.services.humanization import HumanizationService
 
@@ -39,6 +41,7 @@ def classify(
         analyzed_tokens=result["analyzed_tokens"],
         model_version=result["model_version"],
         warnings=result["warnings"],
+        **{key: result[key] for key in ("total_tokens", "window_count", "coverage", "complete", "aggregation") if key in result},
     )
 
 
@@ -68,8 +71,9 @@ def health():
 
 
 @router.get("/ready")
-def ready(request: Request):
-    classifier = request.app.state.services.classifier.readiness()
+def ready(request: Request, validate: bool = False):
+    engine = request.app.state.services.classifier
+    classifier = engine.readiness(validate=True) if validate else engine.readiness()
     settings = get_settings()
     payload = {
         "status": "ready" if classifier["ready"] else "not_ready",
@@ -81,3 +85,49 @@ def ready(request: Request):
         },
     }
     return JSONResponse(payload, status_code=200 if classifier["ready"] else 503)
+
+
+
+def dispatch_operation(services, operation, payload, context=None):
+    if operation == "classify":
+        value = services.classification.classify(
+            payload.text, include_signals=payload.include_signals, context=context
+        )
+        return ClassifyResponse(
+            **value["scores"],
+            **{k: v for k, v in value.items() if k != "scores"},
+        ).model_dump()
+    kwargs = dict(style=payload.style, strength=payload.strength,
+                  use_llm=payload.use_llm,
+                  api_key=payload.deepseek_api_key.get_secret_value() if payload.deepseek_api_key else None,
+                  context=context, similarity_threshold=payload.similarity_threshold, seed=payload.seed)
+    if operation == "humanize":
+        return HumanizeResponse(**services.humanization.humanize(payload.text, **kwargs)).model_dump()
+    service = getattr(services, "comparison", None) or ComparisonService(services.classification, services.humanization)
+    return CompareResponse(**service.compare(payload.text, **kwargs)).model_dump()
+
+
+@router.post("/compare", response_model=CompareResponse)
+def compare(payload: CompareRequest, request: Request):
+    return dispatch_operation(request.app.state.services, "compare", payload)
+
+
+@router.post("/jobs", response_model=JobResponse, status_code=202)
+def submit_job(payload: JobRequest, request: Request):
+    return request.app.state.jobs.submit(payload.operation, payload)
+
+
+@router.get("/jobs/{job_id}", response_model=JobResponse)
+def job_status(job_id: str, request: Request):
+    try:
+        return request.app.state.jobs.get(job_id)
+    except KeyError:
+        return JSONResponse({"error": {"code": "job_not_found", "detail": "Job not found or expired"}}, status_code=404)
+
+
+@router.post("/jobs/{job_id}/cancel", response_model=JobResponse)
+def cancel_job(job_id: str, request: Request):
+    try:
+        return request.app.state.jobs.cancel(job_id)
+    except KeyError:
+        return JSONResponse({"error": {"code": "job_not_found", "detail": "Job not found or expired"}}, status_code=404)

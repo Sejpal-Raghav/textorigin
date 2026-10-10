@@ -33,6 +33,11 @@ class ClassifyResponse(ApiModel):
     analyzed_tokens: int
     model_version: str | None = None
     warnings: list[str]
+    total_tokens: int | None = None
+    window_count: int = 1
+    coverage: float = 1.0
+    complete: bool = True
+    aggregation: str = "single_window"
 
 
 class FeatureMetrics(ApiModel):
@@ -48,7 +53,7 @@ class HumanizeRequest(TextRequest):
     use_llm: bool = True
     style: Literal["natural", "formal", "casual"] = "natural"
     strength: Literal["light", "medium"] = "light"
-    deepseek_api_key: SecretStr | None = None
+    deepseek_api_key: SecretStr | None = Field(default=None, min_length=1, max_length=4096)
     similarity_threshold: float | None = Field(default=None, ge=0, le=1)
     seed: int | None = None
 
@@ -70,6 +75,7 @@ class HumanizeResponse(ApiModel):
     style: Literal["natural", "formal", "casual"]
     strength: Literal["light", "medium"]
     original_metrics: FeatureMetrics
+    final_metrics: FeatureMetrics | None = None
     post_heuristic_metrics: FeatureMetrics
     heuristic_similarity: float
     llm_similarity: float | None = None
@@ -80,3 +86,42 @@ class HumanizeResponse(ApiModel):
 
 class HealthResponse(ApiModel):
     status: Literal["ok"] = "ok"
+
+
+class CompareRequest(HumanizeRequest):
+    use_llm: bool = False
+
+
+class CompareResponse(ApiModel):
+    schema_version: str
+    operation: Literal["compare"]
+    style: Literal["natural", "formal", "casual"]
+    strength: Literal["light", "medium"]
+    original_text: str
+    humanized_text: str
+    original_scores: dict[str, float]
+    revised_scores: dict[str, float]
+    delta_percentage_points: dict[str, float]
+    original_analysis: dict
+    revised_analysis: dict
+    rewrite: HumanizeResponse
+    complete: bool
+
+
+class JobRequest(HumanizeRequest):
+    operation: Literal["classify", "humanize", "compare"]
+    use_llm: bool = False
+    include_signals: bool = False
+
+
+class JobResponse(ApiModel):
+    id: str
+    operation: Literal["classify", "humanize", "compare"]
+    state: Literal["queued", "running", "cancel_requested", "cancelled", "completed", "failed"]
+    stage: str
+    completed_units: int
+    total_units: int | None
+    result: dict | None
+    error: dict | None
+    status_url: str
+    complete: bool
