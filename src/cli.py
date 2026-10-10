@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import getpass
 import json
 import os
 import sys
@@ -109,13 +110,19 @@ def _deepseek_rewrite(text: str, style: str, strength: str) -> dict:
     from src.config import get_settings
 
     services = build_services(get_settings())
+    credential = os.getenv("DEEPSEEK_API_KEY")
+    if not credential and sys.stdin.isatty():
+        credential = getpass.getpass("DeepSeek API key (masked): ").strip()
+    if not credential:
+        services.close()
+        raise ValueError("Configure DEEPSEEK_API_KEY, or use an interactive terminal for masked entry")
     try:
         return services.humanization.humanize(
             text,
             use_llm=True,
             style=style,
             strength=strength,
-            api_key=os.getenv("DEEPSEEK_API_KEY"),
+            api_key=credential,
         )
     finally:
         services.close()
@@ -168,25 +175,21 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(scores, ensure_ascii=False) if args.format == "json" else _display_scores(scores))
             return 0
 
-        revised = rewrite_document(text, style=args.style, strength=args.strength)
-        original_scores = _classify(text)
-        revised_scores = _classify(revised)
-        result = {
-            "schema_version": "1.0",
-            "operation": "compare",
-            "style": args.style,
-            "strength": args.strength,
-            "original_text": text,
-            "humanized_text": revised,
-            "original_scores": original_scores,
-            "revised_scores": revised_scores,
-            "delta_percentage_points": {
-                key: (revised_scores[key] - original_scores[key]) * 100
-                for key in ("human", "ai_written", "ai_paraphrased")
-            },
-        }
+        from src.bootstrap import build_services
+        from src.config import get_settings
+        services = build_services(get_settings())
+        try:
+            result = services.comparison.compare(text, style=args.style, strength=args.strength)
+        finally:
+            services.close()
+        revised = result["humanized_text"]
+        original_scores = result["original_scores"]
+        revised_scores = result["revised_scores"]
         print(json.dumps(result, ensure_ascii=False) if args.format == "json" else f"{revised}\n\nOriginal\n{_display_scores(original_scores)}\n\nRevised\n{_display_scores(revised_scores)}")
         return 0
+    except KeyboardInterrupt:
+        print("Cancelled.", file=sys.stderr)
+        return 130
     except FileExistsError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 2
