@@ -118,6 +118,34 @@ Training selects with validation and reports held-out per-class precision/recall
 
 Feature extraction/calibration remain optional analysis; they are not prerequisites for classifier training and never change classifier scores.
 
+## Windows GPU training
+
+From the repository root in PowerShell, use Python 3.11 and an NVIDIA GPU with a compatible driver. Setup requires internet access and at least 15 GiB of free disk space; 25 GiB or more is recommended.
+
+```powershell
+git pull origin master
+.\run_gpu.cmd --run-dir runs/gpu
+```
+
+The launcher creates or reuses `.venv-gpu`, installs CUDA PyTorch and training dependencies, checks CUDA with an actual GPU operation, then generates the dataset, audits it, trains the classifier and validates the saved model. CPU fallback is disabled. Defaults are 5,000 samples, three epochs, FP16, paraphrase and training batch sizes of two, and four gradient accumulation steps. For available options, run `py -3.11 run_gpu.py --help`.
+
+Each stage writes a log under the selected run directory, such as `setup-cuda.log` or `training.log`. `status.json` contains progress and process IDs. Successful output is saved under `<run-dir>/model`; wait for `ALL STAGES PASSED` before sharing the complete model folder.
+
+### Recovering from the Windows status-file error
+
+If an older runner stopped with `[WinError 5] Access is denied` while replacing `status.tmp` with `status.json`, update the checkout and start in a fresh run directory:
+
+```powershell
+git pull origin master
+.\run_gpu.cmd --run-dir runs/gpu-fixed
+```
+
+Keep any sample-size, epoch, precision or batch-size options from your previous command. Use another fresh directory name if `runs/gpu-fixed` already contains a run with different settings or source code. The runner records a source hash, so updating `run_gpu.py` requires a new run directory; the previous artifacts remain in their original folder.
+
+Status writes now use unique temporary files and retry permission errors. If access remains denied, the runner warns that status may be stale and continues; check the console and stage logs for progress. Critical configuration and checkpoint metadata write failures still stop the run.
+
+For an interruption with unchanged source and settings, rerun the same command to reuse verified completed stages and resume training from its latest checkpoint. If training stopped before its first checkpoint, preserve or rename the run's `model` directory before retrying. If the runner reports `Run is locked`, verify that the PID in `pipeline.lock` and all child processes have stopped before removing that lock and restarting.
+
 ## Verification
 
     .\.venv\Scripts\python.exe -m pytest -q
