@@ -12,3 +12,11 @@ class ExternalServiceError(TextOriginError):
 
 class InferenceCapacityError(TextOriginError):
     pass
+
+
+class OperationCancelled(TextOriginError):
+    pass
+
+
+class JobCapacityError(TextOriginError):
+    pass
