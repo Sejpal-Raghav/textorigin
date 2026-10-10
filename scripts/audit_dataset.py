@@ -24,6 +24,9 @@ def audit_dataset(input_path: Path, output_path: Path, report_path: Path) -> dic
             raise ValueError("Dataset is missing columns: " + ", ".join(sorted(missing)))
         fieldnames = list(reader.fieldnames or ())
         for row in reader:
+            if None in row or any(row.get(name) is None for name in required):
+                removed["malformed_row"] += 1
+                continue
             text = row["text"].strip()
             if not text:
                 removed["blank_text"] += 1
@@ -52,6 +55,23 @@ def audit_dataset(input_path: Path, output_path: Path, report_path: Path) -> dic
             else:
                 retained.append(row)
         accepted = retained
+
+    originals = {(row["source_id"], " ".join(row["text"].lower().split()))
+                 for row in accepted if row["source"] == "ai_written"}
+    retained = []
+    seen_rows = set()
+    for row in accepted:
+        normalized = " ".join(row["text"].lower().split())
+        if row["source"] == "ai_paraphrased" and (row["source_id"], normalized) in originals:
+            removed["unchanged_paraphrase"] += 1
+            continue
+        key = (row["source_id"], row["source"], normalized)
+        if key in seen_rows:
+            removed["duplicate_within_family"] += 1
+            continue
+        seen_rows.add(key)
+        retained.append(row)
+    accepted = retained
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", encoding="utf-8", newline="") as target:
