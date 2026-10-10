@@ -1,0 +1,8 @@
+{
+  "complete": false,
+  "error": "[WinError 5] Access is denied: 'C:\\\\Users\\\\kriss\\\\github\\\\textorigin\\\\runs\\\\gpu\\\\status.tmp' -> 'C:\\\\Users\\\\kriss\\\\github\\\\textorigin\\\\runs\\\\gpu\\\\status.json'",
+  "pid": 7688,
+  "stage": "setup-cuda",
+  "state": "failed",
+  "updated_at": "2026-10-10T06:46:08.678742+00:00"
+}
