@@ -12,4 +12,5 @@ def predict(text: str) -> dict:
         "analyzed_tokens": result["analyzed_tokens"],
         "model_version": result["model_version"],
         "warnings": result["warnings"],
+        **{key: result[key] for key in ("total_tokens", "window_count", "coverage", "complete", "aggregation") if key in result},
     }

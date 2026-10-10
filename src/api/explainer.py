@@ -44,8 +44,8 @@ def _high_distance(value: float, threshold: float) -> float:
     return max(0.0, (value - threshold) / max(abs(threshold), 1.0))
 
 
-def get_observed_signals(text: str, n: int = 3) -> list[str]:
-    feats = extract_features(text)
+def get_observed_signals(text: str, n: int = 3, context=None) -> list[str]:
+    feats = extract_features(text, context=context)
     thresholds = get_thresholds()
     signals = []
 
