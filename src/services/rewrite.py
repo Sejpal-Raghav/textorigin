@@ -22,9 +22,11 @@ class RewriteOptions:
 
 
 PROTECTED_PATTERN = re.compile(
-    r"(```[\s\S]*?```|`[^`\r\n]+`|https?://[^\s<>()]+|"
+    r"(`{3,}[\s\S]*?(?:`{3,}|$)|~{3,}[\s\S]*?(?:~{3,}|$)|`[^`\r\n]+`|https?://[^\s<>()]+|"
     r"\[[0-9]+(?:\s*[-,]\s*[0-9]+)*\]|"
     r'"[^"\r\n]*"|“[^”\r\n]*”|'
+    r"(?<!\w)'[^'\r\n]*'(?!\w)|‘[^’\r\n]*’|"
+    r"(?m:^(?: {4}|\t)[^\r\n]*(?:\r?\n|$))|"
     r"(?<![\w])[-+]?\d+(?:[.,]\d+)*(?:\s*%|\s+[A-Za-z]{1,5})?)"
 )
 
@@ -51,8 +53,6 @@ STYLE_REPLACEMENTS = {
         "to summarize": "",
     },
     "formal": {
-        "a lot of": "many",
-        "get": "obtain",
         "kids": "children",
         "okay": "acceptable",
     },
@@ -108,22 +108,34 @@ def _edit_prose(text: str, options: RewriteOptions) -> str:
     text = re.sub(r"[ \t]+([,.;!?])", r"\1", text)
     text = text.strip(" \t")
     text = re.sub(r"(^|(?<=[.!?])\s+)([a-z])", lambda match: match.group(1) + match.group(2).upper(), text)
+    text = re.sub(r"^([-*+]\s+|#{1,6}\s+|>\s+)([a-z])", lambda match: match.group(1) + match.group(2).upper(), text)
     return text
 
 
+def _edit_lines(text: str, options: RewriteOptions) -> str:
+    parts = re.split(r"(\r?\n)", text)
+    result = []
+    for part in parts:
+        if not part.strip() or part in {"\n", "\r\n"}:
+            result.append(part)
+            continue
+        leading = re.match(r"[ \t]*", part).group()
+        trailing = re.search(r"[ \t]*$", part).group()
+        edited = _edit_prose(part, options)
+        result.append(leading + edited + trailing)
+    return "".join(result)
+
+
 def rewrite_block(text: str, options: RewriteOptions) -> str:
-    """Rewrite prose while restoring protected spans byte-for-byte."""
-    protected: list[str] = []
-
-    def stash(match: re.Match[str]) -> str:
-        protected.append(match.group(0))
-        return f"\ue000{len(protected) - 1}\ue001"
-
-    working = PROTECTED_PATTERN.sub(stash, text)
-    working = _edit_prose(working, options)
-    for index, original in enumerate(protected):
-        working = working.replace(f"\ue000{index}\ue001", original)
-    return working
+    """Edit prose regions directly; protected spans never enter the editor."""
+    result = []
+    cursor = 0
+    for match in PROTECTED_PATTERN.finditer(text):
+        result.append(_edit_lines(text[cursor:match.start()], options))
+        result.append(match.group())
+        cursor = match.end()
+    result.append(_edit_lines(text[cursor:], options))
+    return "".join(result)
 
 
 def rewrite_document(
@@ -131,15 +143,9 @@ def rewrite_document(
     style: RewriteStyle = "natural",
     strength: RewriteStrength = "light",
 ) -> str:
-    """Apply conservative edits while preserving line and paragraph separators."""
     if not text.strip():
         raise ValueError("Text cannot be empty")
-    options = RewriteOptions(style=style, strength=strength)
-    parts = re.split(r"(\r?\n)", text)
-    return "".join(
-        part if part in {"\n", "\r\n"} or not part.strip() else rewrite_block(part, options)
-        for part in parts
-    )
+    return rewrite_block(text, RewriteOptions(style=style, strength=strength))
 
 
 def protected_spans(text: str) -> tuple[str, ...]:
@@ -148,3 +154,16 @@ def protected_spans(text: str) -> tuple[str, ...]:
 
 def protected_spans_preserved(original: str, candidate: str) -> bool:
     return protected_spans(original) == protected_spans(candidate)
+
+
+
+def document_structure_preserved(original: str, candidate: str) -> bool:
+    def signature(text):
+        lines = text.splitlines(keepends=True)
+        values = []
+        for line in lines:
+            prefix = re.match(r"[ \t]*(?:(?:[-*+]|\d+[.)]|#{1,6}|>)\s+)?", line).group()
+            newline = "\r\n" if line.endswith("\r\n") else "\n" if line.endswith("\n") else ""
+            values.append((prefix, not bool(line.strip()), newline))
+        return values
+    return signature(original) == signature(candidate)
