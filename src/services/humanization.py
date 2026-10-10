@@ -7,10 +7,12 @@ from typing import Protocol
 from src.errors import ExternalServiceError
 from src.services.capacity import InferenceCapacity
 from src.services.document import document_chunks
+from src.services.execution import ExecutionContext, context_or_default
 from src.services.rewrite import (
     RewriteStrength,
     RewriteStyle,
     protected_spans_preserved,
+    document_structure_preserved,
     rewrite_document,
 )
 
@@ -24,6 +26,7 @@ class Polisher(Protocol):
         style: RewriteStyle,
         strength: RewriteStrength,
         api_key: str | None = None,
+        context: ExecutionContext | None = None,
     ) -> str: ...
 
 
@@ -31,11 +34,11 @@ class SimilarityValidator(Protocol):
     def compare(self, text1: str, text2: str) -> float: ...
 
 
-def extract_features(text: str) -> dict:
+def extract_features(text: str, context=None) -> dict:
     """Lazy import keeps the CLI and API schemas free of model imports."""
     from src.features.extractor import extract_features as implementation
 
-    return implementation(text)
+    return implementation(text, context=context)
 
 
 def heuristic_rewrite(
@@ -74,6 +77,7 @@ class HumanizationService:
         style: RewriteStyle = "natural",
         strength: RewriteStrength = "light",
         api_key: str | None = None,
+        context: ExecutionContext | None = None,
     ) -> dict:
         threshold = self.default_threshold if similarity_threshold is None else similarity_threshold
         if not self.minimum_threshold <= threshold <= 1:
@@ -81,10 +85,12 @@ class HumanizationService:
                 f"similarity_threshold must be between {self.minimum_threshold} and 1"
             )
 
+        context = context_or_default(context)
+        context.progress("extracting_original_metrics")
         started = perf_counter()
         warnings: list[str] = []
-        with self.capacity.claim():
-            original_metrics = extract_features(text)
+        with self.capacity.claim(context):
+            original_metrics = extract_features(text, context=context)
             accepted_chunks: list[str] = []
             heuristic_chunks: list[str] = []
             heuristic_scores: list[tuple[float, int]] = []
@@ -93,6 +99,12 @@ class HumanizationService:
             accepted_llm = False
             chunks = document_chunks(text)
             for index, original_chunk in enumerate(chunks, start=1):
+                context.progress("rewriting", index - 1, len(chunks))
+                if len(original_chunk) > 4_000:
+                    heuristic_chunks.append(original_chunk)
+                    accepted_chunks.append(original_chunk)
+                    warnings.append(f"chunk_{index}_oversized_protected_region_unchanged")
+                    continue
                 if not original_chunk.strip():
                     heuristic_chunks.append(original_chunk)
                     accepted_chunks.append(original_chunk)
@@ -109,21 +121,24 @@ class HumanizationService:
                 accepted_chunk = original_chunk
                 if heuristic_score >= threshold and protected_spans_preserved(
                     original_chunk, heuristic_chunk
-                ):
+                ) and document_structure_preserved(original_chunk, heuristic_chunk):
                     accepted_chunk = heuristic_chunk
                     accepted_heuristic = accepted_heuristic or heuristic_chunk != original_chunk
                 else:
                     warnings.append(f"chunk_{index}_heuristic_rejected")
 
                 if use_llm:
+                    context.check()
                     try:
                         llm_text = self.polisher.polish(
                             accepted_chunk,
                             style=style,
                             strength=strength,
                             api_key=api_key,
+                            context=context,
                         )
-                        if not protected_spans_preserved(original_chunk, llm_text):
+                        context.check()
+                        if not protected_spans_preserved(original_chunk, llm_text) or not document_structure_preserved(original_chunk, llm_text):
                             raise ExternalServiceError("Polisher changed protected content")
                         llm_score = self.similarity.compare(original_chunk, llm_text)
                         llm_scores.append((llm_score, weight))
@@ -136,8 +151,10 @@ class HumanizationService:
                         warnings.append(f"chunk_{index}_polisher_unavailable")
                 accepted_chunks.append(accepted_chunk)
 
+            context.progress("rewriting", len(chunks), len(chunks))
+            context.progress("extracting_result_metrics")
             heuristic_text = "".join(heuristic_chunks)
-            heuristic_metrics = extract_features(heuristic_text)
+            heuristic_metrics = extract_features(heuristic_text, context=context)
             heuristic_similarity = _weighted_mean(heuristic_scores)
             accepted_text = "".join(accepted_chunks)
             status = (
@@ -148,7 +165,9 @@ class HumanizationService:
                 else "unchanged"
             )
             llm_similarity = _weighted_mean(llm_scores) if llm_scores else None
-            llm_metrics = extract_features(accepted_text) if accepted_llm else None
+            final_metrics = original_metrics if accepted_text == text else extract_features(accepted_text, context=context)
+            llm_metrics = final_metrics if accepted_llm else None
+            context.check()
 
         LOGGER.info(
             "humanization_completed duration_seconds=%.3f status=%s warning_count=%d",
@@ -165,6 +184,7 @@ class HumanizationService:
             "style": style,
             "strength": strength,
             "original_metrics": original_metrics,
+            "final_metrics": final_metrics,
             "post_heuristic_metrics": heuristic_metrics,
             "heuristic_similarity": heuristic_similarity,
             "llm_similarity": llm_similarity,
