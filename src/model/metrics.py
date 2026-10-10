@@ -29,7 +29,7 @@ def compute_metrics(eval_pred) -> dict:
         per_class[f"recall_{label}"] = float(recall[index])
     return {
         **per_class,
-        "macro_f1": float(f1_score(labels, predictions, average="macro", zero_division=0)),
+        "macro_f1": float(f1_score(labels, predictions, labels=[0, 1, 2], average="macro", zero_division=0)),
         "accuracy": float(accuracy_score(labels, predictions)),
         "f1": float(f1_score(labels, predictions, average="weighted", zero_division=0)),
         "f1_human": float(per_class_f1[0]),

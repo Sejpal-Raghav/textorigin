@@ -72,7 +72,10 @@ class GPUOrchestrationTests(unittest.TestCase):
         self.assertTrue(any('torch==2.13.0' in command for command in self.commands))
         trained = next(command for command in self.commands if 'scripts.train' in command)
         self.assertEqual(trained[trained.index('--mixed-precision') + 1], 'fp16')
-        self.assertNotIn('--no-gradient-checkpointing', trained)
+        self.assertIn('--no-gradient-checkpointing', trained)
+        self.assertEqual(trained[trained.index('--train-batch-size') + 1], '16')
+        self.assertEqual(trained[trained.index('--eval-batch-size') + 1], '32')
+        self.assertEqual(trained[trained.index('--gradient-accumulation-steps') + 1], '1')
         count = len(self.commands)
         self.invoke()
         second_run = self.commands[count:]
@@ -91,6 +94,20 @@ class GPUOrchestrationTests(unittest.TestCase):
         trained = [command for command in self.commands if 'scripts.train' in command][-1]
         self.assertIn('--resume-from-checkpoint', trained)
         self.assertTrue(json.loads((self.run / 'status.json').read_text())['complete'])
+
+    def test_memory_settings_are_forwarded_and_recorded(self):
+        self.invoke(['--train-batch-size', '8', '--eval-batch-size', '16',
+                     '--gradient-accumulation-steps', '2', '--gradient-checkpointing',
+                     '--dataloader-workers', '2', '--optimizer', 'adamw_torch'])
+        trained = next(command for command in self.commands if 'scripts.train' in command)
+        for flag, expected in [('--train-batch-size', '8'), ('--eval-batch-size', '16'),
+                               ('--gradient-accumulation-steps', '2'), ('--dataloader-workers', '2'),
+                               ('--optimizer', 'adamw_torch')]:
+            self.assertEqual(trained[trained.index(flag) + 1], expected)
+        self.assertIn('--gradient-checkpointing', trained)
+        config = json.loads((self.run / 'pipeline-config.json').read_text())
+        self.assertTrue(config['gradient_checkpointing'])
+        self.assertEqual(config['eval_batch_size'], 16)
 
     def test_cpu_fallback_is_refused(self):
         from types import SimpleNamespace

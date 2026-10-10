@@ -40,7 +40,7 @@ py -3.11 run_gpu.py --cuda-index cu130
 4. Generate 5,000 T5 paraphrases, using batch size 2, four beams and existing source/output length limits. T5 generation stays in FP32. Each completed batch is checkpointed.
 5. Save the combined dataset and provenance.
 6. Audit/clean the data, removing malformed rows, duplicates and unchanged paraphrases; save the audit report and dataset hash.
-7. Fine-tune pretrained RoBERTa for 3 epochs using FP16, max length 256, training batch 2, accumulation 4 (effective batch 8), evaluation batch 1 and gradient checkpointing. Each stage runs in a separate process to release its model memory.
+7. Fine-tune pretrained RoBERTa for 3 epochs using FP16, max length 256, training batch 16, accumulation 1 (effective batch 16), evaluation batch 32 and gradient checkpointing off. CUDA uses fused AdamW, padding to multiples of eight, cached inputs and pinned/nonblocking transfers. Each stage runs in a separate process to release its model memory.
 8. Run validation during training and held-out test evaluation afterward, including document-window aggregation, confusion matrices, baseline comparisons, error analysis and resource measurements. The split keeps source families together.
 9. Save model, tokenizer, evaluation reports, manifest and checkpoint state.
 10. Validate real HTTP/CLI classification, rewriting, comparison and background jobs, then repeat runtime validation offline after model caches have been populated.
@@ -84,7 +84,7 @@ After a power failure, pipeline.lock may remain. Read its recorded PID and verif
 Settings and source are recorded. Changing them requires a new output folder. For a fresh more conservative run after a GPU memory error:
 
 ~~~powershell
-py -3.11 run_gpu.py --run-dir runs/gpu-small --paraphrase-batch-size 1 --train-batch-size 1 --gradient-accumulation-steps 8
+py -3.11 run_gpu.py --run-dir runs/gpu-small --paraphrase-batch-size 1 --train-batch-size 1 --eval-batch-size 2 --gradient-accumulation-steps 8 --gradient-checkpointing
 ~~~
 
 For a quick end-to-end engineering run (still downloads the required models):
@@ -94,6 +94,37 @@ py -3.11 run_gpu.py --run-dir runs/gpu-small-check --sample-size 100 --epochs 1
 ~~~
 
 This small run is not evidence of full-dataset model quality. Network/driver/disk failures still require fixing their cause; unattended execution cannot recover from a powered-off computer or missing hardware support.
+
+## Throughput on an 8 GB GPU
+
+The larger defaults are a starting point, not a measured memory guarantee. They
+replace the earlier conservative batch-2/checkpointing setup. Gradient
+checkpointing trades additional compute for lower activation memory; use it only
+when needed to fit a useful batch. See the [Transformers explanation](https://huggingface.co/docs/transformers/grad_checkpointing).
+Fused AdamW reduces optimizer overhead on CUDA; see [PyTorch AdamW](https://docs.pytorch.org/docs/stable/generated/torch.optim.AdamW.html).
+
+Use a fresh run folder after changing source or settings. To retain the previous
+effective batch of eight while making each GPU pass larger:
+
+~~~powershell
+py -3.11 run_gpu.py --run-dir runs/gpu-throughput --train-batch-size 8 --eval-batch-size 32 --gradient-accumulation-steps 1
+~~~
+
+The default batch 16 changes effective batch size, so evaluate model quality
+again. If memory is exhausted, lower training and evaluation batches, or enable
+`--gradient-checkpointing`. More VRAM allocation alone is not a speed metric:
+compare samples/second and epoch duration using the same dataset/window policy.
+`evaluation.json` records trainer throughput, document-evaluation throughput,
+effective batch, and allocated/reserved peak CUDA memory. The training timer
+includes epoch validation and checkpoint writes.
+
+Window inputs and prefix-evaluation tokens are cached before training. Workers
+default to zero because Windows spawn can copy a large cached corpus into each
+worker. `--dataloader-workers 2` enables persistent workers and prefetching if
+profiling shows a loading bottleneck. Offline document evaluation fills batches
+across document boundaries while retaining each document's token-weighted score.
+Paraphrase generation keeps its existing FP32/batch-2 defaults; these throughput
+changes target classifier training and evaluation.
 
 ## Return the results
 

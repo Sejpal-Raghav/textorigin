@@ -64,8 +64,12 @@ def parser():
     result.add_argument('--sample-size', type=int, default=5000)
     result.add_argument('--epochs', type=int, default=3)
     result.add_argument('--paraphrase-batch-size', type=int, default=2)
-    result.add_argument('--train-batch-size', type=int, default=2)
-    result.add_argument('--gradient-accumulation-steps', type=int, default=4)
+    result.add_argument('--train-batch-size', type=int, default=16)
+    result.add_argument('--eval-batch-size', type=int, default=32)
+    result.add_argument('--gradient-accumulation-steps', type=int, default=1)
+    result.add_argument('--gradient-checkpointing', action=argparse.BooleanOptionalAction, default=False)
+    result.add_argument('--dataloader-workers', type=int, default=0)
+    result.add_argument('--optimizer', choices=['auto', 'adamw_torch', 'adamw_torch_fused'], default='auto')
     result.add_argument('--precision', choices=['fp16', 'bf16'], default='fp16')
     result.add_argument('--cuda-index', choices=['cu126', 'cu130', 'cu132'], default='cu126')
     result.add_argument('--run-dir', type=Path, default=Path('runs/gpu'))
@@ -108,8 +112,10 @@ def main():
     if not (3, 10) <= sys.version_info[:2] < (3, 13):
         raise SystemExit('Use Python 3.10, 3.11 or 3.12 (3.11 recommended).')
     if min(args.sample_size, args.epochs, args.paraphrase_batch_size,
-           args.train_batch_size, args.gradient_accumulation_steps) < 1:
+           args.train_batch_size, args.eval_batch_size, args.gradient_accumulation_steps) < 1:
         raise SystemExit('Sample, epoch, batch and accumulation counts must be positive.')
+    if args.dataloader_workers < 0:
+        raise SystemExit('Data loader workers must be nonnegative.')
     os.chdir(ROOT)
     run = args.run_dir.resolve()
     run.mkdir(parents=True, exist_ok=True)
@@ -133,7 +139,7 @@ def main():
             sleep_prevented = bool(ctypes.windll.kernel32.SetThreadExecutionState(0x80000001))
         environment = dict(os.environ)
         environment.update(PYTHONUNBUFFERED='1', OMP_NUM_THREADS='2', MKL_NUM_THREADS='2',
-                           TOKENIZERS_PARALLELISM='false', TEXTORIGIN_CLASSIFIER_BATCH_SIZE='1')
+                           TOKENIZERS_PARALLELISM='false', TEXTORIGIN_CLASSIFIER_BATCH_SIZE=str(args.eval_batch_size))
         # Select a single visible GPU consistently for every stage.
         environment.setdefault('CUDA_VISIBLE_DEVICES', '0')
         environment.pop('HF_HUB_OFFLINE', None)
@@ -209,9 +215,11 @@ def main():
               '--output', str(clean), '--report', str(audit)], [clean, audit], [raw])
         train = [str(python), '-m', 'scripts.train', '--data', str(clean), '--audit-report', str(audit),
                  '--output-dir', str(model), '--epochs', str(args.epochs), '--max-length', '256',
-                 '--train-batch-size', str(args.train_batch_size), '--eval-batch-size', '1',
+                 '--train-batch-size', str(args.train_batch_size), '--eval-batch-size', str(args.eval_batch_size),
                  '--gradient-accumulation-steps', str(args.gradient_accumulation_steps),
-                 '--mixed-precision', args.precision]
+                 '--mixed-precision', args.precision,
+                 '--dataloader-workers', str(args.dataloader_workers), '--optimizer', args.optimizer,
+                 '--gradient-checkpointing' if args.gradient_checkpointing else '--no-gradient-checkpointing']
         if (model / 'training-identity.json').exists() and not (run / 'training.completed.json').exists():
             if not any(model.glob('checkpoint-*/trainer_state.json')):
                 raise RuntimeError('Training stopped before its first checkpoint. Preserve/rename the model directory, then rerun; dataset and audit will be reused.')

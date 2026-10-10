@@ -5,7 +5,6 @@ from transformers import (
     RobertaTokenizerFast,
     Trainer,
     TrainingArguments,
-    DataCollatorWithPadding,
     TrainerCallback,
 )
 
@@ -30,17 +29,20 @@ class PeriodicCheckpoint(TrainerCallback):
 
 
 class TextDataset(Dataset):
-    def __init__(self, texts: list[str], labels: list[int], tokenizer, max_length: int = 256):
+    def __init__(self, texts: list[str], labels: list[int], tokenizer, max_length: int = 256,
+                 pretokenize: bool = False):
         self.texts = texts
         self.labels = labels
         self.tokenizer = tokenizer
         self.max_length = max_length
+        self.encoded = [tokenizer(text, truncation=True, max_length=max_length)
+                        for text in texts] if pretokenize else None
 
     def __len__(self):
         return len(self.labels)
 
     def __getitem__(self, idx):
-        item = self.tokenizer(
+        item = dict(self.encoded[idx]) if self.encoded is not None else self.tokenizer(
             self.texts[idx],
             truncation=True,
             max_length=self.max_length,
@@ -77,10 +79,21 @@ def get_trainer(
     gradient_checkpointing: bool = True,
     mixed_precision: str = "auto",
     max_steps: int = -1,
+    document_validation=None,
+    window_max_length: int = 256,
+    dataloader_workers: int = 0,
+    optimizer: str = "auto",
 ) -> Trainer:
     from src.model.metrics import compute_metrics
+    from src.model.document_training import DocumentTrainer, WeightedWindowCollator
 
     use_cuda = torch.cuda.is_available()
+    if dataloader_workers < 0:
+        raise ValueError("Data loader workers must be nonnegative")
+    if optimizer not in {"auto", "adamw_torch", "adamw_torch_fused"}:
+        raise ValueError("Unknown optimizer")
+    if optimizer == "auto":
+        optimizer = "adamw_torch_fused" if use_cuda else "adamw_torch"
     if mixed_precision in {"fp16", "bf16"} and not use_cuda:
         raise ValueError("Explicit mixed precision requires supported CUDA; use none on CPU")
     if mixed_precision == "bf16" and not torch.cuda.is_bf16_supported():
@@ -97,29 +110,37 @@ def get_trainer(
         gradient_accumulation_steps=gradient_accumulation_steps,
         num_train_epochs=epochs,
         max_steps=max_steps,
-        eval_accumulation_steps=1,
+        eval_accumulation_steps=16,
+        optim=optimizer,
         weight_decay=0.01,
         load_best_model_at_end=True,
-        metric_for_best_model="f1",
+        metric_for_best_model="document_macro_f1" if document_validation is not None else "f1",
+        greater_is_better=True,
+        remove_unused_columns=False,
         fp16=use_fp16 and not use_bf16,
         bf16=use_bf16,
         gradient_checkpointing=gradient_checkpointing,
         save_total_limit=2,
-        dataloader_num_workers=0,
+        dataloader_num_workers=dataloader_workers,
+        dataloader_persistent_workers=dataloader_workers > 0,
+        dataloader_prefetch_factor=2 if dataloader_workers > 0 else None,
         dataloader_pin_memory=use_cuda,
+        accelerator_config={"non_blocking": use_cuda},
         seed=seed,
         data_seed=seed,
         logging_steps=50,
         report_to="none",
     )
 
-    return Trainer(
+    return DocumentTrainer(
         model=model,
         args=args,
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
         processing_class=tokenizer,
-        data_collator=DataCollatorWithPadding(tokenizer=tokenizer),
+        data_collator=WeightedWindowCollator(tokenizer, pad_to_multiple_of=8 if use_cuda else None),
+        document_validation=document_validation,
+        window_max_length=window_max_length,
         callbacks=[PeriodicCheckpoint()],
         compute_metrics=compute_metrics,
     )

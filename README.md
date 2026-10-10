@@ -116,6 +116,8 @@ Original AI and derived samples share source_id and remain in one partition. Cro
 
 Training selects with validation and reports held-out per-class precision/recall/F1, macro/weighted F1, accuracy, confusion matrices, Brier/ECE, majority baseline and human false positives. It evaluates the serving document aggregation policy separately. Do not call scores calibrated confidence or generalize one synthetic dataset to proof of authorship.
 
+New full training runs use every nonoverlapping document window, balance class/document loss weights, and select checkpoints by full-document validation macro F1. `--window-policy first_window` retains prefix training for comparison; smoke runs stay prefix-only. These changes require a fresh model output directory. The completed GPU baseline has substantial full-document errors; see [the improvement plan](docs/MODEL_IMPROVEMENT_PLAN.md) for diagnostics, retraining commands, and the evaluation procedure. Improvements must be measured on a new candidate.
+
 Feature extraction/calibration remain optional analysis; they are not prerequisites for classifier training and never change classifier scores.
 
 ## Windows GPU training
@@ -127,7 +129,7 @@ git pull origin master
 .\run_gpu.cmd --run-dir runs/gpu
 ```
 
-The launcher creates or reuses `.venv-gpu`, installs CUDA PyTorch and training dependencies, checks CUDA with an actual GPU operation, then generates the dataset, audits it, trains the classifier and validates the saved model. CPU fallback is disabled. Defaults are 5,000 samples, three epochs, FP16, paraphrase and training batch sizes of two, and four gradient accumulation steps. For available options, run `py -3.11 run_gpu.py --help`.
+The launcher creates or reuses `.venv-gpu`, installs CUDA PyTorch and training dependencies, checks CUDA with an actual GPU operation, then generates the dataset, audits it, trains the classifier and validates the saved model. CPU fallback is disabled. Defaults are 5,000 samples, three epochs, FP16, paraphrase batch two, training batch 16, evaluation batch 32, one gradient accumulation step and gradient checkpointing off. CUDA training uses fused AdamW, cached inputs and padding to multiples of eight. See [GPU throughput settings](docs/GPU_TRAINING.md#throughput-on-an-8-gb-gpu) for memory overrides and benchmarking. For available options, run `py -3.11 run_gpu.py --help`.
 
 Each stage writes a log under the selected run directory, such as `setup-cuda.log` or `training.log`. `status.json` contains progress and process IDs. Successful output is saved under `<run-dir>/model`; wait for `ALL STAGES PASSED` before sharing the complete model folder.
 

@@ -20,6 +20,7 @@ from src.data.split import grouped_stratified_split
 from src.inference.classifier import ClassifierEngine
 from src.model.classifier import LABEL2ID, MODEL_ID, MODEL_REVISION, TextDataset, get_trainer, load_model_and_tokenizer
 from src.model.metrics import compute_metrics, print_confusion_matrix
+from src.model.document_training import DocumentWindowDataset, document_metrics
 from src.utils.files import file_sha256
 
 
@@ -51,15 +52,34 @@ def main():
     parser.add_argument("--output-dir", default="models/roberta-classifier")
     parser.add_argument("--epochs", type=int, default=3)
     parser.add_argument("--max-length", type=int, default=256)
+    parser.add_argument("--window-policy", choices=("all_windows", "first_window"), default="all_windows",
+                        help="Train on full-document windows (default) or the legacy prefix baseline")
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--train-batch-size", type=int, default=2)
-    parser.add_argument("--eval-batch-size", type=int, default=2)
-    parser.add_argument("--gradient-accumulation-steps", type=int, default=8)
+    parser.add_argument("--train-batch-size", type=int, help="Default: CUDA 16, CPU 2")
+    parser.add_argument("--eval-batch-size", type=int, help="Default: CUDA 32, CPU 2")
+    parser.add_argument("--gradient-accumulation-steps", type=int, help="Default: CUDA 1, CPU 8")
+    parser.add_argument("--dataloader-workers", type=int, default=0,
+                        help="Optional persistent workers; 0 avoids Windows spawn/RAM overhead for cached inputs")
+    parser.add_argument("--optimizer", choices=("auto", "adamw_torch", "adamw_torch_fused"), default="auto")
     parser.add_argument("--mixed-precision", choices=("auto", "fp16", "bf16", "none"), default="auto")
-    parser.add_argument("--no-gradient-checkpointing", action="store_true")
-    parser.add_argument("--smoke", action="store_true", help="Two update steps; no held-out test evaluation")
+    parser.add_argument("--gradient-checkpointing", action=argparse.BooleanOptionalAction,
+                        help="Default: off on CUDA for speed, on on CPU for memory")
+    parser.add_argument("--smoke", action="store_true", help="Two prefix-only update steps; no held-out test evaluation")
     parser.add_argument("--resume-from-checkpoint", help="Checkpoint directory or 'latest'")
     args = parser.parse_args()
+    use_cuda = torch.cuda.is_available()
+    if args.train_batch_size is None:
+        args.train_batch_size = 16 if use_cuda else 2
+    if args.eval_batch_size is None:
+        args.eval_batch_size = 32 if use_cuda else 2
+    if args.gradient_accumulation_steps is None:
+        args.gradient_accumulation_steps = 1 if use_cuda else 8
+    if args.gradient_checkpointing is None:
+        args.gradient_checkpointing = not use_cuda
+    if args.optimizer == "auto":
+        args.optimizer = "adamw_torch_fused" if use_cuda else "adamw_torch"
+    if args.dataloader_workers < 0:
+        parser.error("Data loader workers must be nonnegative")
     if min(args.epochs, args.train_batch_size, args.eval_batch_size, args.gradient_accumulation_steps) < 1 or not 4 <= args.max_length <= 512:
         parser.error("Epochs and batch/accumulation sizes must be positive; max length must be 4..512")
     output = Path(args.output_dir).resolve()
@@ -92,8 +112,14 @@ def main():
                 "gradient_accumulation_steps": args.gradient_accumulation_steps,
                 "mixed_precision": args.mixed_precision, "dependencies": versions,
                 "base_model": MODEL_ID, "base_model_revision": MODEL_REVISION,
-                "gradient_checkpointing": not args.no_gradient_checkpointing,
+                "gradient_checkpointing": args.gradient_checkpointing,
+                "eval_batch_size": args.eval_batch_size,
+                "dataloader_workers": args.dataloader_workers, "optimizer": args.optimizer,
+                "pad_to_multiple_of": 8 if use_cuda else None,
                 "checkpoint_steps": 250,
+                "window_policy": "first_window" if args.smoke else args.window_policy,
+                "loss_weighting": "class_balanced_document_token_weighted" if args.window_policy == "all_windows" and not args.smoke else "unweighted",
+                "checkpoint_selection": "validation_document_macro_f1" if not args.smoke else "validation_window_f1",
                 "code_sha256": code_provenance()["source_sha256"]}
     output.mkdir(parents=True, exist_ok=True)
     identity_path = output / "training-identity.json"
@@ -129,16 +155,33 @@ def main():
     try:
         model, tokenizer = load_model_and_tokenizer()
         def dataset(frame):
-            return TextDataset(frame["text"].tolist(), frame["label"].astype(int).tolist(), tokenizer, args.max_length)
+            return TextDataset(frame["text"].tolist(), frame["label"].astype(int).tolist(), tokenizer, args.max_length,
+                               pretokenize=True)
         training_frame = train.iloc[:24] if args.smoke else train
         validation_frame = validation.iloc[:12] if args.smoke else validation
-        trainer = get_trainer(model, tokenizer, dataset(training_frame), dataset(validation_frame),
+        training_dataset = (DocumentWindowDataset(training_frame["text"].tolist(),
+                            training_frame["label"].astype(int).tolist(), tokenizer, args.max_length)
+                            if args.window_policy == "all_windows" and not args.smoke
+                            else dataset(training_frame))
+        print(json.dumps({"training_documents": len(training_frame), "training_windows": len(training_dataset),
+                          "window_policy": identity["window_policy"], "loss_weighting": identity["loss_weighting"]}), flush=True)
+        trainer = get_trainer(model, tokenizer, training_dataset, dataset(validation_frame),
                               str(output), args.epochs,
                               train_batch_size=args.train_batch_size, eval_batch_size=args.eval_batch_size,
                               gradient_accumulation_steps=args.gradient_accumulation_steps, seed=args.seed,
-                              gradient_checkpointing=not args.no_gradient_checkpointing,
-                              mixed_precision=args.mixed_precision, max_steps=2 if args.smoke else -1)
+                              gradient_checkpointing=args.gradient_checkpointing,
+                              dataloader_workers=args.dataloader_workers, optimizer=args.optimizer,
+                              mixed_precision=args.mixed_precision, max_steps=2 if args.smoke else -1,
+                              document_validation=None if args.smoke else (
+                                  validation["text"].tolist(), validation["label"].astype(int).tolist()),
+                              window_max_length=args.max_length)
+        if use_cuda:
+            torch.cuda.synchronize()
+        training_started = perf_counter()
         train_result = trainer.train(resume_from_checkpoint=resume)
+        if use_cuda:
+            torch.cuda.synchronize()
+        training_seconds = perf_counter() - training_started
         trainer.save_model(str(output))
         tokenizer.save_pretrained(str(output))
         report = {
@@ -151,6 +194,15 @@ def main():
             "dependencies": versions,
             "metric_conventions": "3-class softmax; summed multiclass Brier; ECE: 10 equal-width confidence bins",
             "aggregation": "nonoverlapping_token_weighted_mean",
+            "window_policy": identity["window_policy"], "loss_weighting": identity["loss_weighting"],
+            "checkpoint_selection": identity["checkpoint_selection"],
+            "training_windows": len(training_dataset),
+            "throughput": {"trainer_samples_per_second": train_result.metrics.get("train_samples_per_second"),
+                           "trainer_steps_per_second": train_result.metrics.get("train_steps_per_second"),
+                           "train_and_epoch_validation_seconds": training_seconds,
+                           "effective_batch_size": args.train_batch_size * args.gradient_accumulation_steps,
+                           "train_batch_size": args.train_batch_size, "eval_batch_size": args.eval_batch_size,
+                           "optimizer": args.optimizer, "gradient_checkpointing": args.gradient_checkpointing},
             "limitations": [
                 "AI-paraphrased labels come from one synthetic paraphrase model.",
                 "Evaluation uses one dataset and does not establish cross-domain authorship accuracy.",
@@ -163,10 +215,16 @@ def main():
             labels = test["label"].astype(int).to_numpy()
             report["single_window_test_metrics"] = compute_metrics((predictions.predictions, labels))
             report["single_window_confusion_matrix"] = print_confusion_matrix(labels, np.argmax(predictions.predictions, axis=-1)).tolist()
-            engine = ClassifierEngine(output)
+            engine = ClassifierEngine(output, batch_size=args.eval_batch_size)
             engine._model, engine._tokenizer = model.eval(), tokenizer
             engine._manifest = {"max_length": args.max_length}
-            scores = np.array([list(engine.predict(text)["scores"].values()) for text in test["text"]])
+            report["validation_document_diagnostic"] = document_metrics(
+                engine, validation["text"].tolist(), validation["label"].astype(int).tolist(), diagnostics=True)
+            test_started = perf_counter()
+            scores = np.array([list(result["scores"].values()) for result in engine.predict_many(test["text"].tolist())])
+            test_seconds = perf_counter() - test_started
+            report["throughput"]["document_test_seconds"] = test_seconds
+            report["throughput"]["document_test_documents_per_second"] = len(test) / test_seconds
             report["document_test_metrics"] = compute_metrics((np.log(np.clip(scores, 1e-12, 1)), labels))
             report["document_confusion_matrix"] = print_confusion_matrix(labels, scores.argmax(axis=1)).tolist()
             majority = int(train["label"].value_counts().idxmax())
@@ -191,6 +249,7 @@ def main():
         report["elapsed_seconds"] = perf_counter()-started
         report["device"] = "cuda" if torch.cuda.is_available() else "cpu"
         report["peak_cuda_bytes"] = torch.cuda.max_memory_allocated() if torch.cuda.is_available() else None
+        report["peak_cuda_reserved_bytes"] = torch.cuda.max_memory_reserved() if use_cuda else None
         report.update(memory)
         (output / "evaluation.json").write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
         summary = ["# TextOrigin evaluation", "", "Purpose: " + report["purpose"], "",
@@ -210,6 +269,8 @@ def main():
             "evaluation_sha256": file_sha256(output / "evaluation.json"),
             "training_parameters": vars(args), "dependencies": versions,
             "test_metrics": report.get("document_test_metrics"),
+            "window_policy": identity["window_policy"], "loss_weighting": identity["loss_weighting"],
+            "checkpoint_selection": identity["checkpoint_selection"],
             "aggregation": report["aggregation"],
         }
         (output / "textorigin-manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
@@ -219,6 +280,8 @@ def main():
         monitor.join()
         (output / "resource-measurement.json").write_text(
             json.dumps({**memory, "elapsed_seconds": perf_counter()-started,
+                        "peak_cuda_bytes": torch.cuda.max_memory_allocated() if use_cuda else None,
+                        "peak_cuda_reserved_bytes": torch.cuda.max_memory_reserved() if use_cuda else None,
                         "device": "cuda" if torch.cuda.is_available() else "cpu"}, indent=2), encoding="utf-8")
 
 
