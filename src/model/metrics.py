@@ -1,5 +1,5 @@
 import numpy as np
-from sklearn.metrics import accuracy_score, confusion_matrix, f1_score
+from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, precision_recall_fscore_support
 
 
 def compute_metrics(eval_pred) -> dict:
@@ -22,7 +22,14 @@ def compute_metrics(eval_pred) -> dict:
 
     per_class_f1 = f1_score(labels, predictions, average=None, labels=[0, 1, 2], zero_division=0)
 
+    precision, recall, _, _ = precision_recall_fscore_support(labels, predictions, labels=[0, 1, 2], zero_division=0)
+    per_class = {}
+    for index, label in enumerate(("human", "ai_written", "ai_paraphrased")):
+        per_class[f"precision_{label}"] = float(precision[index])
+        per_class[f"recall_{label}"] = float(recall[index])
     return {
+        **per_class,
+        "macro_f1": float(f1_score(labels, predictions, average="macro", zero_division=0)),
         "accuracy": float(accuracy_score(labels, predictions)),
         "f1": float(f1_score(labels, predictions, average="weighted", zero_division=0)),
         "f1_human": float(per_class_f1[0]),
@@ -35,7 +42,7 @@ def compute_metrics(eval_pred) -> dict:
 
 def print_confusion_matrix(labels: list, predictions: list) -> np.ndarray:
     class_names = ["human", "ai_written", "ai_paraphrased"]
-    cm = confusion_matrix(labels, predictions)
+    cm = confusion_matrix(labels, predictions, labels=[0, 1, 2])
 
     col_width = 18
     header = f"{'':20}" + "".join(f"{c:{col_width}}" for c in class_names)
