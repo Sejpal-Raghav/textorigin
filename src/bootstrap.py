@@ -8,6 +8,7 @@ from src.integrations.deepseek import DeepSeekClient
 from src.services.capacity import InferenceCapacity
 from src.services.classification import ClassificationService
 from src.services.humanization import HumanizationService
+from src.services.comparison import ComparisonService
 
 
 @dataclass
@@ -16,6 +17,10 @@ class ApplicationServices:
     humanization: HumanizationService
     classifier: ClassifierEngine
     polisher: DeepSeekClient
+    comparison: ComparisonService | None = None
+
+    def __post_init__(self):
+        self.comparison = ComparisonService(self.classification, self.humanization)
 
     def close(self) -> None:
         self.polisher.close()
@@ -25,7 +30,7 @@ def build_services(settings: Settings) -> ApplicationServices:
     capacity = InferenceCapacity(
         settings.max_concurrent_inferences, settings.inference_wait_seconds
     )
-    classifier = ClassifierEngine(settings.model_path)
+    classifier = ClassifierEngine(settings.model_path, batch_size=settings.classifier_batch_size)
     similarity = SimilarityEngine()
     polisher = DeepSeekClient(
         settings.deepseek_base_url,
