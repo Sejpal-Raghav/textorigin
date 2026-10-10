@@ -23,6 +23,15 @@ def grouped_stratified_split(
             "Dataset is missing lineage columns: " + ", ".join(sorted(missing))
         )
 
+    if df[list(required_columns)].isna().any().any():
+        raise ValueError("Dataset contains missing text, source or lineage")
+    if not set(df["source"]).issubset({"human", "ai_written", "ai_paraphrased"}):
+        raise ValueError("Unknown source labels")
+    if df.groupby("source_id")["source"].apply(lambda values: "human" in set(values) and len(set(values)) > 1).any():
+        raise ValueError("Human and AI source identities must not overlap")
+    normalized = df["text"].astype(str).str.lower().str.split().str.join(" ")
+    if df.assign(normalized=normalized).groupby("normalized")["source_id"].nunique().gt(1).any():
+        raise ValueError("Cross-family duplicate text must be audited before splitting")
     human_ids = df.loc[df["source"] == "human", "source_id"].unique().tolist()
     ai_ids = df.loc[df["source"] != "human", "source_id"].unique().tolist()
     if min(len(human_ids), len(ai_ids)) < 10:

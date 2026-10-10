@@ -28,3 +28,11 @@ def test_audit_removes_invalid_rows_and_records_duplicates(tmp_path):
     }
     assert report["duplicate_resolution"] == "excluded_all_cross-family_exact_duplicates"
     assert output.exists()
+
+
+def test_audit_excludes_unchanged_derivatives_and_malformed_records(tmp_path):
+    source=tmp_path/'input.csv'
+    source.write_text('text,source,source_id\nOriginal,ai_written,a1\nOriginal,ai_paraphrased,a1\nOriginal,ai_written,a1\nMissing,ai_written\n',encoding='utf-8')
+    result=audit_dataset(source,tmp_path/'clean.csv',tmp_path/'report.json')
+    assert result['accepted_rows']==1
+    assert result['removed_rows']=={'malformed_row':1,'unchanged_paraphrase':1,'duplicate_within_family':1}
