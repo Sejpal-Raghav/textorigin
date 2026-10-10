@@ -1,0 +1,16 @@
+{
+  "inputs": {
+    "audit.json": "90a7010d9931984d0a735e18da267e2f2f673b4e502f62cae7562a29eed0081b",
+    "combined.clean.csv": "6864f878323c1bd6e8e6f2b254d8af0fb6696798a1f21a5981f78d0a4c849ccd"
+  },
+  "outputs": {
+    "model\\config.json": "9add8c29dd225d9ff81323b408fb142f236115b6bd06f9f6f7be9e9e22561291",
+    "model\\evaluation.json": "e60ed53b7edf216a09c745c7624f56fe2e5e987de840aa50bb44016a5d1c7975",
+    "model\\evaluation.md": "ad95144c601b268014567caf3540867b49b76a3d9e62707e021f14c4e09afb37",
+    "model\\model.safetensors": "16365f54b0f81660411496d41c7ef542e6deb81f653770431fe5956103ff9b69",
+    "model\\textorigin-manifest.json": "e6847d25d7a2c100620c025b99b6b8401fc15140397484b07986c3da04c4418e",
+    "model\\tokenizer.json": "b2a029f178b127c0c6e3d8d32b2ab27164138626186fb1a7b38389073d82e797",
+    "model\\tokenizer_config.json": "7d6f3e9b96f719882978ff5ca8152ee32834055538d06187e79ac80be116272a",
+    "model\\training-identity.json": "2854dd799bae8fe4891a6fad29039a9c4b9d72c2603c38dcd65edd2f7f850d44"
+  }
+}

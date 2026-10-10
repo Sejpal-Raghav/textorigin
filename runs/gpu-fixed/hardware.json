@@ -1,0 +1,8 @@
+{
+  "available_ram_bytes": 2911588352,
+  "cuda": "12.6",
+  "free_disk_bytes": 181620744192,
+  "gpu": "NVIDIA GeForce RTX 4060 Laptop GPU",
+  "torch": "2.13.0+cu126",
+  "vram_bytes": 8585216000
+}

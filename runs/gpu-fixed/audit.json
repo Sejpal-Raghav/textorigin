@@ -1,0 +1,17 @@
+{
+  "accepted_rows": 14996,
+  "class_counts": {
+    "ai_paraphrased": 4996,
+    "ai_written": 5000,
+    "human": 5000
+  },
+  "duplicate_resolution": "excluded_all_cross-family_exact_duplicates",
+  "input_path": "C:\\Users\\kriss\\github\\textorigin\\runs\\gpu-fixed\\combined.csv",
+  "input_sha256": "8e946953c82f0ccc1a4712d5e55a7f89fe640c2011cf7d1d1650266088ad1505",
+  "normalized_texts_crossing_source_families": 2,
+  "output_path": "C:\\Users\\kriss\\github\\textorigin\\runs\\gpu-fixed\\combined.clean.csv",
+  "output_sha256": "6864f878323c1bd6e8e6f2b254d8af0fb6696798a1f21a5981f78d0a4c849ccd",
+  "removed_rows": {
+    "duplicate_cross_family": 4
+  }
+}

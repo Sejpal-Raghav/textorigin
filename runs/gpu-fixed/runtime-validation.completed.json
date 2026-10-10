@@ -1,0 +1,10 @@
+{
+  "inputs": {
+    "model\\model.safetensors": "16365f54b0f81660411496d41c7ef542e6deb81f653770431fe5956103ff9b69",
+    "model\\textorigin-manifest.json": "e6847d25d7a2c100620c025b99b6b8401fc15140397484b07986c3da04c4418e"
+  },
+  "outputs": {
+    "model\\runtime-verification-offline.json": "c4ab1ec456be278fa5907c598c31abb1a547cc30a101c467e83c1cb333e7fdaa",
+    "model\\runtime-verification.json": "b4b3fadbf7311c7ba3a4c825dae0212c548d04786497c49e1c731f1e147ead3a"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "purpose": "release_candidate",
+  "offline": false,
+  "checks": {
+    "http_long_classify": {
+      "windows": 19,
+      "tokens": 4575
+    },
+    "http_rewrite": "unchanged",
+    "http_compare": true,
+    "http_job": true,
+    "cli_rewrite": true,
+    "cli_classify": true,
+    "cli_compare": true,
+    "offline_followup": true
+  },
+  "artifact_sha256": "16365f54b0f81660411496d41c7ef542e6deb81f653770431fe5956103ff9b69",
+  "complete": true
+}
