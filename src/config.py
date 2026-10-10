@@ -7,6 +7,7 @@ from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_MODEL_ROOT = PROJECT_ROOT / "models" if (PROJECT_ROOT / "pyproject.toml").is_file() else Path.home() / ".textorigin" / "models"
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -37,7 +38,6 @@ class Settings:
     model_path: Path
     feature_thresholds_path: Path
     cors_origins: tuple[str, ...]
-    max_text_chars: int
     default_similarity_threshold: float
     minimum_similarity_threshold: float
     max_concurrent_inferences: int
@@ -48,6 +48,11 @@ class Settings:
     deepseek_api_key: str | None
     deepseek_timeout_seconds: float
     log_level: str
+    classifier_batch_size: int = 2
+    job_queue_size: int = 4
+    job_retained_count: int = 32
+    job_ttl_seconds: int = 600
+    job_memory_bytes: int = 32 * 1024 * 1024
 
     @property
     def manifest_path(self) -> Path:
@@ -63,14 +68,13 @@ def get_settings() -> Settings:
     )
     settings = Settings(
         model_path=_env_path(
-            "TEXTORIGIN_MODEL_PATH", PROJECT_ROOT / "models" / "roberta-classifier"
+            "TEXTORIGIN_MODEL_PATH", DEFAULT_MODEL_ROOT / "roberta-classifier"
         ),
         feature_thresholds_path=_env_path(
             "TEXTORIGIN_FEATURE_THRESHOLDS_PATH",
-            PROJECT_ROOT / "models" / "feature-thresholds.json",
+            DEFAULT_MODEL_ROOT / "feature-thresholds.json",
         ),
         cors_origins=origins,
-        max_text_chars=_env_int("TEXTORIGIN_MAX_TEXT_CHARS", 10_000),
         default_similarity_threshold=_env_float(
             "TEXTORIGIN_SIMILARITY_THRESHOLD", 0.85
         ),
@@ -92,10 +96,15 @@ def get_settings() -> Settings:
         deepseek_timeout_seconds=_env_float(
             "TEXTORIGIN_DEEPSEEK_TIMEOUT_SECONDS", 60.0
         ),
+        classifier_batch_size=_env_int("TEXTORIGIN_CLASSIFIER_BATCH_SIZE", 2),
+        job_queue_size=_env_int("TEXTORIGIN_JOB_QUEUE_SIZE", 4),
+        job_retained_count=_env_int("TEXTORIGIN_JOB_RETAINED_COUNT", 32),
+        job_ttl_seconds=_env_int("TEXTORIGIN_JOB_TTL_SECONDS", 600),
+        job_memory_bytes=_env_int("TEXTORIGIN_JOB_MEMORY_BYTES", 32 * 1024 * 1024),
         log_level=os.getenv("TEXTORIGIN_LOG_LEVEL", "INFO").upper(),
     )
-    if settings.max_text_chars < 1:
-        raise ValueError("TEXTORIGIN_MAX_TEXT_CHARS must be positive")
+    if settings.classifier_batch_size < 1:
+        raise ValueError("Classifier batch size must be positive")
     if settings.max_concurrent_inferences < 1:
         raise ValueError("TEXTORIGIN_MAX_CONCURRENT_INFERENCES must be positive")
     if not 0 <= settings.minimum_similarity_threshold <= 1:
@@ -104,4 +113,8 @@ def get_settings() -> Settings:
         raise ValueError(
             "TEXTORIGIN_SIMILARITY_THRESHOLD must be between the configured minimum and 1"
         )
+    if min(settings.job_queue_size, settings.job_retained_count, settings.job_ttl_seconds, settings.job_memory_bytes) < 1:
+        raise ValueError("Job limits must be positive")
+    if settings.deepseek_timeout_seconds <= 0 or settings.inference_wait_seconds < 0:
+        raise ValueError("Timeout must be positive and inference wait nonnegative")
     return settings
