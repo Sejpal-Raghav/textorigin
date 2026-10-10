@@ -6,6 +6,7 @@ import numpy as np
 import torch
 
 from src.features.phrases import AI_PHRASES
+from src.services.execution import context_or_default
 from src.inference.perplexity import get_perplexity_model
 
 _AI_PHRASE_PATTERN = re.compile(
@@ -18,19 +19,29 @@ _AI_PHRASE_PATTERN = re.compile(
 _WORD_PATTERN = re.compile(r"\b[\w']+\b")
 
 
-def compute_perplexity(text: str, max_length: int = 512) -> float:
+def compute_perplexity(text: str, max_length: int = 512, context=None) -> float:
+    """Token-weighted NLL over all content, with one-token boundary context."""
+    context = context_or_default(context)
+    context.progress("loading_feature_model")
     model, tokenizer = get_perplexity_model()
     device = next(model.parameters()).device
-
-    encodings = tokenizer(text, return_tensors="pt", truncation=True, max_length=max_length)
-    input_ids = encodings.input_ids.to(device)
-
-    if input_ids.shape[1] < 2:
+    ids = tokenizer.encode(text, add_special_tokens=False, verbose=False)
+    if len(ids) < 2:
         return math.exp(20)
-
-    with torch.no_grad():
-        outputs = model(input_ids, labels=input_ids)
-        return math.exp(min(outputs.loss.item(), 20))  # cap at e^20 to avoid overflow
+    loss_sum = 0.0
+    count = 0
+    with torch.inference_mode():
+        total_windows = math.ceil((len(ids)-1)/(max_length-1))
+        for index, start in enumerate(range(1, len(ids), max_length - 1)):
+            context.progress("feature_windows", index, total_windows)
+            window = ids[start - 1:start + max_length - 1]
+            input_ids = torch.tensor([window], device=device)
+            loss = model(input_ids, labels=input_ids).loss.item()
+            weight = len(window) - 1
+            loss_sum += loss * weight
+            count += weight
+    context.progress("feature_windows", total_windows, total_windows)
+    return math.exp(min(loss_sum / count, 20))
 
 
 def compute_burstiness(text: str) -> float:
@@ -88,9 +99,9 @@ def compute_structural_regularity(text: str) -> float:
     return float(1.0 - min(std / mean, 1.0))
 
 
-def extract_features(text: str) -> dict:
+def extract_features(text: str, context=None) -> dict:
     return {
-        "perplexity": compute_perplexity(text),
+        "perplexity": compute_perplexity(text, context=context),
         "burstiness": compute_burstiness(text),
         "entropy": compute_entropy(text),
         "ai_phrase_rate": compute_ai_phrase_rate(text),
