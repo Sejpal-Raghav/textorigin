@@ -6,6 +6,7 @@ import time
 import requests
 
 from src.errors import ExternalServiceError
+from src.services.execution import ExecutionContext
 from src.services.rewrite import RewriteStrength, RewriteStyle
 
 
@@ -37,8 +38,9 @@ class DeepSeekClient:
         style: RewriteStyle,
         strength: RewriteStrength,
         api_key: str | None = None,
+        context: ExecutionContext | None = None,
     ) -> str:
-        credential = api_key or self.api_key
+        credential = self.api_key if api_key is None else api_key
         if not credential:
             raise ExternalServiceError("DeepSeek API key is not configured")
         prompt = (
@@ -65,14 +67,29 @@ class DeepSeekClient:
             "Authorization": f"Bearer {credential}",
             "Content-Type": "application/json",
         }
+        deadline = time.monotonic() + self.timeout_seconds
+
+        def pause(delay):
+            delay = min(delay, max(0, deadline - time.monotonic()))
+            if context is None:
+                time.sleep(delay)
+            else:
+                context.cancelled.wait(delay)
+                context.check()
+
         last_error: Exception | None = None
         for attempt in range(self.max_retries + 1):
+            if context is not None:
+                context.check()
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise ExternalServiceError("DeepSeek polish deadline exceeded")
             try:
                 response = self._session.post(
                     f"{self.base_url}/chat/completions",
                     json=payload,
                     headers=headers,
-                    timeout=self.timeout_seconds,
+                    timeout=remaining,
                 )
                 if response.status_code in {401, 403}:
                     raise ExternalServiceError("DeepSeek rejected the API key")
@@ -91,6 +108,8 @@ class DeepSeekClient:
                 if choice.get("finish_reason") != "stop":
                     raise ExternalServiceError("DeepSeek returned an incomplete response")
                 revised = choice["message"]["content"].strip()
+                if len(revised) > max(4096, len(text) * 4):
+                    raise ExternalServiceError("DeepSeek output exceeds the processing budget")
                 if not revised:
                     raise ExternalServiceError("DeepSeek returned an empty response")
                 LOGGER.info("deepseek_polish_completed model=%s", self.model)
@@ -102,7 +121,7 @@ class DeepSeekClient:
                 if attempt < self.max_retries and isinstance(
                     exc, (requests.Timeout, requests.ConnectionError)
                 ):
-                    time.sleep(min(2**attempt, 5))
+                    pause(min(2**attempt, 5))
                     continue
                 break
         LOGGER.warning(
