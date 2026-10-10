@@ -6,3 +6,6 @@ pandas==2.1.3
 tqdm==4.67.3
 sentencepiece==0.2.2
 accelerate==1.14.0
+
+# Arrow 26 requires NumPy 2 at import time; preserve the NumPy 1.x stack.
+pyarrow==21.0.0
