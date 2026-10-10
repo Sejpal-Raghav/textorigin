@@ -1,0 +1,10 @@
+{
+  "cuda_index": "cu126",
+  "epochs": 3,
+  "gradient_accumulation_steps": 4,
+  "paraphrase_batch_size": 2,
+  "precision": "fp16",
+  "sample_size": 5000,
+  "source_sha256": "d613633b4edf02baebb7e4b848ae5571f6dd48719327d193a83800de0c7172b4",
+  "train_batch_size": 2
+}

@@ -1,0 +1,8 @@
+{
+  "child_pid": 4636,
+  "complete": false,
+  "pid": 7688,
+  "stage": "setup-cuda",
+  "state": "running",
+  "updated_at": "2026-10-10T06:46:06.674229+00:00"
+}
