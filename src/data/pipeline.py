@@ -1,4 +1,8 @@
 import argparse
+import json
+from src.data.loader import DATASET_ID, DATASET_REVISION
+from src.data.paraphrase import MODEL_ID, MODEL_REVISION
+from src.utils.files import file_sha256
 from pathlib import Path
 
 import pandas as pd
@@ -16,7 +20,7 @@ def build_dataset(
     output.parent.mkdir(parents=True, exist_ok=True)
 
     print("Loading raw data from HuggingFace...")
-    df = load_raw_data(sample_size=sample_size)
+    df = load_raw_data(sample_size=sample_size, streaming=True)
 
     human_df = df[df["source"] == "human"]
     ai_df = df[df["source"] == "ai_written"]
@@ -34,6 +38,14 @@ def build_dataset(
     combined = combined.sample(frac=1, random_state=42).reset_index(drop=True)
     combined.to_csv(output, index=False)
 
+    output.with_suffix(".provenance.json").write_text(json.dumps({
+        "dataset": DATASET_ID, "dataset_revision": DATASET_REVISION,
+        "paraphrase_model": MODEL_ID, "paraphrase_revision": MODEL_REVISION,
+        "seed": 42, "sample_size_per_class": sample_size,
+        "sampling": "streaming_shuffle_buffer_10000_first_valid_unique_per_class",
+        "dataset_sha256": file_sha256(output),
+        "class_counts": combined["source"].value_counts().to_dict(),
+    }, indent=2), encoding="utf-8")
     print(f"\nSaved {len(combined)} total samples to {output}")
     print(combined["source"].value_counts().to_string())
     return combined
