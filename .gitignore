@@ -39,3 +39,12 @@ Thumbs.db
 
 # HuggingFace cache
 *.lock
+
+# Local training/evaluation artifacts and browser reports
+data/smoke/
+data/processed/
+models/smoke-classifier/
+frontend/test-results/
+frontend/playwright-report/
+
+.packagecheck/
