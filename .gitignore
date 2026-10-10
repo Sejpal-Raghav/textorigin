@@ -48,3 +48,5 @@ frontend/test-results/
 frontend/playwright-report/
 
 .packagecheck/
+
+.venv-gpu/
