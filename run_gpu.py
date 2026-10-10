@@ -11,6 +11,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import venv
 
@@ -26,9 +27,36 @@ def sha(path):
 
 
 def save(path, value):
-    temporary = path.with_suffix('.tmp')
-    temporary.write_text(json.dumps(value, indent=2, sort_keys=True), encoding='utf-8')
-    temporary.replace(path)
+    temporary = None
+    try:
+        # A unique, closed file avoids writer collisions and Windows handle locks.
+        with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=path.parent,
+                                         prefix=path.stem + '-', suffix='.tmp', delete=False) as stream:
+            temporary = Path(stream.name)
+            json.dump(value, stream, indent=2, sort_keys=True)
+        for attempt in range(6):
+            try:
+                temporary.replace(path)
+                return
+            except PermissionError:
+                if attempt == 5:
+                    raise
+                time.sleep(0.1 * 2**attempt)
+    finally:
+        if temporary is not None:
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+
+def save_status(path, status):
+    """Status is advisory; a locked status file must not stop the pipeline."""
+    try:
+        save(path, status)
+    except OSError as error:
+        print(f'Warning: could not update {path}: {error}. Status may be stale; '
+              'execution will continue.', file=sys.stderr, flush=True)
 
 
 def parser():
@@ -114,7 +142,7 @@ def main():
             nonlocal child
             status.update(state='running', stage=stage, updated_at=datetime.now(timezone.utc).isoformat())
             print(f'\n[{stage}] Starting. Log: {run / (stage + ".log")}', flush=True)
-            save(status_path, status)
+            save_status(status_path, status)
             with (run / (stage + '.log')).open('a', encoding='utf-8') as log:
                 log.write('\n' + datetime.now(timezone.utc).isoformat() + '\n' + json.dumps(command) + '\n')
                 log.flush()
@@ -122,7 +150,7 @@ def main():
                 status['child_pid'] = child.pid
                 while child.poll() is None:
                     status['updated_at'] = datetime.now(timezone.utc).isoformat()
-                    save(status_path, status)
+                    save_status(status_path, status)
                     time.sleep(2)
                 if child.returncode:
                     raise RuntimeError(f'{stage} failed (exit {child.returncode}). See {run / (stage + ".log")}. Rerun the same command after resolving the cause.')
@@ -209,7 +237,7 @@ def main():
             child.wait()
         status.pop('child_pid', None)
         status['updated_at'] = datetime.now(timezone.utc).isoformat()
-        save(status_path, status)
+        save_status(status_path, status)
         lock.unlink(missing_ok=True)
         if sleep_prevented:
             import ctypes

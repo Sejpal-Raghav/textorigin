@@ -121,6 +121,74 @@ class GPUOrchestrationTests(unittest.TestCase):
             self.invoke(['--epochs', '4'])
         self.assertIn('Settings or source changed', json.loads((self.run / 'status.json').read_text())['error'])
 
+    def test_status_lock_does_not_stop_pipeline(self):
+        replace = Path.replace
+
+        def locked_status(source, target):
+            if target.name == 'status.json':
+                raise PermissionError('status locked')
+            return replace(source, target)
+
+        with patch.object(Path, 'replace', autospec=True, side_effect=locked_status), \
+             patch.object(run_gpu.time, 'sleep'), patch('sys.stderr') as stderr:
+            self.invoke()
+        self.assertTrue((self.run / 'runtime-validation.completed.json').exists())
+        self.assertFalse((self.run / 'pipeline.lock').exists())
+        self.assertEqual(list(self.run.glob('*.tmp')), [])
+        self.assertIn('Status may be stale', str(stderr.write.call_args_list))
+
+    def test_status_lock_does_not_mask_stage_failure(self):
+        self.fail = 'scripts.train'
+        replace = Path.replace
+
+        def locked_status(source, target):
+            if target.name == 'status.json':
+                raise PermissionError('status locked')
+            return replace(source, target)
+
+        with patch.object(Path, 'replace', autospec=True, side_effect=locked_status), \
+             patch.object(run_gpu.time, 'sleep'), patch('sys.stderr') as stderr:
+            with self.assertRaises(SystemExit) as caught:
+                self.invoke()
+        self.assertEqual(caught.exception.code, 1)
+        self.assertIn('training failed (exit 1)', str(stderr.write.call_args_list))
+        self.assertFalse((self.run / 'pipeline.lock').exists())
+        self.assertFalse(any('scripts.verify_runtime' in command for command in self.commands))
+
+    def test_save_retries_lock_and_preserves_unrelated_temporary_file(self):
+        target = self.root / 'status.json'
+        target.write_text('{"old": true}')
+        unrelated = self.root / 'status.tmp'
+        unrelated.write_text('another writer')
+        replace = Path.replace
+        attempts = []
+
+        def transient_lock(source, destination):
+            attempts.append(source)
+            if len(attempts) < 3:
+                self.assertEqual(json.loads(target.read_text()), {'old': True})
+                raise PermissionError('status locked')
+            return replace(source, destination)
+
+        with patch.object(Path, 'replace', autospec=True, side_effect=transient_lock), \
+             patch.object(run_gpu.time, 'sleep'):
+            run_gpu.save(target, {'complete': True})
+        self.assertEqual(len(attempts), 3)
+        self.assertEqual(json.loads(target.read_text()), {'complete': True})
+        self.assertEqual(unrelated.read_text(), 'another writer')
+        self.assertEqual(list(self.root.glob('status-*.tmp')), [])
+
+    def test_critical_metadata_write_failure_still_raises(self):
+        target = self.root / 'pipeline-config.json'
+        target.write_text('{"old": true}')
+        with patch.object(Path, 'replace', side_effect=PermissionError('locked')) as replace, \
+             patch.object(run_gpu.time, 'sleep'):
+            with self.assertRaises(PermissionError):
+                run_gpu.save(target, {'new': True})
+        self.assertEqual(replace.call_count, 6)
+        self.assertEqual(json.loads(target.read_text()), {'old': True})
+        self.assertEqual(list(self.root.glob('*.tmp')), [])
+
 
 if __name__ == '__main__':
     unittest.main()
