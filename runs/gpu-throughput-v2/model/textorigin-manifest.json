@@ -1,0 +1,69 @@
+{
+  "aggregation": "nonoverlapping_token_weighted_mean",
+  "base_model": "FacebookAI/roberta-base",
+  "base_model_revision": "e2da8e2",
+  "checkpoint_selection": "validation_document_macro_f1",
+  "code_provenance": {
+    "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "dirty": true,
+    "revision": "94409d6e045509c42926d9929e9dcb755d690f20",
+    "source_sha256": "2aea4eab7d7b69218305feb47341c88fe5638d371957013cebdc6791355134c5"
+  },
+  "code_revision": "94409d6e045509c42926d9929e9dcb755d690f20",
+  "created_at": "2026-10-10T17:21:04.867925+00:00",
+  "dataset_sha256": "6864f878323c1bd6e8e6f2b254d8af0fb6696798a1f21a5981f78d0a4c849ccd",
+  "dependencies": {
+    "accelerate": "1.14.0",
+    "datasets": "5.0.1",
+    "numpy": "1.26.2",
+    "pandas": "2.1.3",
+    "scikit-learn": "1.8.0",
+    "torch": "2.13.0+cu126",
+    "transformers": "5.14.1"
+  },
+  "evaluation_sha256": "fab437f7e5e6eee3a5fe36bb9ffb2fa7f418dd41454401f8a9484869ea365687",
+  "labels": {
+    "ai_paraphrased": 2,
+    "ai_written": 1,
+    "human": 0
+  },
+  "loss_weighting": "class_balanced_document_token_weighted",
+  "max_length": 256,
+  "purpose": "release_candidate",
+  "test_metrics": {
+    "accuracy": 0.8505670446964643,
+    "brier_score": 0.23486875311777544,
+    "expected_calibration_error": 0.042229049694918974,
+    "f1": 0.8510079158463386,
+    "f1_ai_paraphrased": 0.9038262668045501,
+    "f1_ai_written": 0.8299198575244879,
+    "f1_human": 0.8193832599118943,
+    "macro_f1": 0.8510431280803107,
+    "precision_ai_paraphrased": 0.9337606837606838,
+    "precision_ai_written": 0.7479935794542536,
+    "precision_human": 0.9117647058823529,
+    "recall_ai_paraphrased": 0.875751503006012,
+    "recall_ai_written": 0.932,
+    "recall_human": 0.744
+  },
+  "training_identity_sha256": "2ba18701aa97f26806306b84ab8deeeeea0057722341a6c94fb74bd07ac46c53",
+  "training_parameters": {
+    "audit_report": "runs/gpu-fixed/audit.json",
+    "data": "runs/gpu-fixed/combined.clean.csv",
+    "dataloader_workers": 0,
+    "epochs": 3,
+    "eval_batch_size": 32,
+    "gradient_accumulation_steps": 1,
+    "gradient_checkpointing": false,
+    "max_length": 256,
+    "mixed_precision": "fp16",
+    "optimizer": "adamw_torch_fused",
+    "output_dir": "runs/gpu-throughput-v2/model",
+    "resume_from_checkpoint": "C:\\Users\\kriss\\github\\textorigin\\runs\\gpu-throughput-v2\\model\\checkpoint-500",
+    "seed": 42,
+    "smoke": false,
+    "train_batch_size": 16,
+    "window_policy": "all_windows"
+  },
+  "window_policy": "all_windows"
+}

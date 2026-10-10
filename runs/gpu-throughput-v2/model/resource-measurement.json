@@ -1,0 +1,7 @@
+{
+  "peak_rss_bytes": 3584032768,
+  "elapsed_seconds": 2320.370065299998,
+  "peak_cuda_bytes": 3423582720,
+  "peak_cuda_reserved_bytes": 3657433088,
+  "device": "cuda"
+}
