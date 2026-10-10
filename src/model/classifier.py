@@ -6,6 +6,7 @@ from transformers import (
     Trainer,
     TrainingArguments,
     DataCollatorWithPadding,
+    TrainerCallback,
 )
 
 MODEL_ID = "FacebookAI/roberta-base"
@@ -13,6 +14,19 @@ MODEL_REVISION = "e2da8e2"
 
 LABEL2ID = {"human": 0, "ai_written": 1, "ai_paraphrased": 2}
 ID2LABEL = {v: k for k, v in LABEL2ID.items()}
+
+
+class PeriodicCheckpoint(TrainerCallback):
+    """Save optimizer/scheduler state between epoch evaluations for long CPU runs."""
+    def __init__(self, interval=250):
+        if interval < 1:
+            raise ValueError("Checkpoint interval must be positive")
+        self.interval = interval
+
+    def on_step_end(self, args, state, control, **kwargs):
+        if state.global_step % self.interval == 0:
+            control.should_save = True
+        return control
 
 
 class TextDataset(Dataset):
@@ -62,10 +76,15 @@ def get_trainer(
     seed: int = 42,
     gradient_checkpointing: bool = True,
     mixed_precision: str = "auto",
+    max_steps: int = -1,
 ) -> Trainer:
     from src.model.metrics import compute_metrics
 
     use_cuda = torch.cuda.is_available()
+    if mixed_precision in {"fp16", "bf16"} and not use_cuda:
+        raise ValueError("Explicit mixed precision requires supported CUDA; use none on CPU")
+    if mixed_precision == "bf16" and not torch.cuda.is_bf16_supported():
+        raise ValueError("This CUDA device does not support bf16")
     use_bf16 = mixed_precision == "bf16" and use_cuda
     use_fp16 = (mixed_precision == "fp16" or mixed_precision == "auto") and use_cuda
     args = TrainingArguments(
@@ -77,6 +96,8 @@ def get_trainer(
         per_device_eval_batch_size=eval_batch_size,
         gradient_accumulation_steps=gradient_accumulation_steps,
         num_train_epochs=epochs,
+        max_steps=max_steps,
+        eval_accumulation_steps=1,
         weight_decay=0.01,
         load_best_model_at_end=True,
         metric_for_best_model="f1",
@@ -85,6 +106,7 @@ def get_trainer(
         gradient_checkpointing=gradient_checkpointing,
         save_total_limit=2,
         dataloader_num_workers=0,
+        dataloader_pin_memory=use_cuda,
         seed=seed,
         data_seed=seed,
         logging_steps=50,
@@ -98,5 +120,6 @@ def get_trainer(
         eval_dataset=val_dataset,
         processing_class=tokenizer,
         data_collator=DataCollatorWithPadding(tokenizer=tokenizer),
+        callbacks=[PeriodicCheckpoint()],
         compute_metrics=compute_metrics,
     )
