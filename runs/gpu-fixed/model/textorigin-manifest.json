@@ -1,0 +1,63 @@
+{
+  "aggregation": "nonoverlapping_token_weighted_mean",
+  "base_model": "FacebookAI/roberta-base",
+  "base_model_revision": "e2da8e2",
+  "code_provenance": {
+    "diff_sha256": "8ae894c0d5b95a06d54d174e99fc64c4a096590dacc1f7b1c436169787b43619",
+    "dirty": true,
+    "revision": "c80b9d73c6dfc93c713affb2538940c52eba3e89",
+    "source_sha256": "b896f727e21c6f317e8de2b63fdcfdb4ef516fa0dce24f944d8bfd5d2bd14239"
+  },
+  "code_revision": "c80b9d73c6dfc93c713affb2538940c52eba3e89",
+  "created_at": "2026-10-10T11:17:01.421143+00:00",
+  "dataset_sha256": "6864f878323c1bd6e8e6f2b254d8af0fb6696798a1f21a5981f78d0a4c849ccd",
+  "dependencies": {
+    "accelerate": "1.14.0",
+    "datasets": "5.0.1",
+    "numpy": "1.26.2",
+    "pandas": "2.1.3",
+    "scikit-learn": "1.8.0",
+    "torch": "2.13.0+cu126",
+    "transformers": "5.14.1"
+  },
+  "evaluation_sha256": "e60ed53b7edf216a09c745c7624f56fe2e5e987de840aa50bb44016a5d1c7975",
+  "labels": {
+    "ai_paraphrased": 2,
+    "ai_written": 1,
+    "human": 0
+  },
+  "max_length": 256,
+  "purpose": "release_candidate",
+  "test_metrics": {
+    "accuracy": 0.5843895930620414,
+    "brier_score": 0.5914258577943978,
+    "expected_calibration_error": 0.2661315165016801,
+    "f1": 0.5132173807810201,
+    "f1_ai_paraphrased": 0.8427947598253275,
+    "f1_ai_written": 0.06791171477079797,
+    "f1_human": 0.6296048225050235,
+    "macro_f1": 0.5134370990337164,
+    "precision_ai_paraphrased": 0.9256594724220624,
+    "precision_ai_written": 0.2247191011235955,
+    "precision_human": 0.473313192346425,
+    "recall_ai_paraphrased": 0.7735470941883767,
+    "recall_ai_written": 0.04,
+    "recall_human": 0.94
+  },
+  "training_identity_sha256": "2854dd799bae8fe4891a6fad29039a9c4b9d72c2603c38dcd65edd2f7f850d44",
+  "training_parameters": {
+    "audit_report": "C:\\Users\\kriss\\github\\textorigin\\runs\\gpu-fixed\\audit.json",
+    "data": "C:\\Users\\kriss\\github\\textorigin\\runs\\gpu-fixed\\combined.clean.csv",
+    "epochs": 3,
+    "eval_batch_size": 1,
+    "gradient_accumulation_steps": 4,
+    "max_length": 256,
+    "mixed_precision": "fp16",
+    "no_gradient_checkpointing": false,
+    "output_dir": "C:\\Users\\kriss\\github\\textorigin\\runs\\gpu-fixed\\model",
+    "resume_from_checkpoint": null,
+    "seed": 42,
+    "smoke": false,
+    "train_batch_size": 2
+  }
+}

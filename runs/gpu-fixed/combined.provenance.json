@@ -1,0 +1,15 @@
+{
+  "dataset": "artem9k/ai-text-detection-pile",
+  "dataset_revision": "9bc306f",
+  "paraphrase_model": "humarin/chatgpt_paraphraser_on_T5_base",
+  "paraphrase_revision": "f86b18a7feb0b8149b7612a620b61e2e26dbf82e",
+  "seed": 42,
+  "sample_size_per_class": 5000,
+  "sampling": "streaming_shuffle_buffer_10000_first_valid_unique_per_class",
+  "dataset_sha256": "8e946953c82f0ccc1a4712d5e55a7f89fe640c2011cf7d1d1650266088ad1505",
+  "class_counts": {
+    "ai_paraphrased": 5000,
+    "ai_written": 5000,
+    "human": 5000
+  }
+}
