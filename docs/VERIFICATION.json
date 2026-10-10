@@ -1,0 +1,16 @@
+{
+  "verified_at": "2026-10-09T17:27:43.680Z",
+  "python_tests_passed": 81,
+  "browser_tests_passed": 7,
+  "next_version": "16.4.0",
+  "frontend_build": "passed",
+  "npm_audit_vulnerabilities": 0,
+  "pip_check": "passed",
+  "installed_wheel_outside_checkout": "passed",
+  "offline_runtime_smoke_artifact": "passed",
+  "wheel_sha256": "82e558b04088af1788ffba21e5d51a6b6279055aec29732fc82122f6e4088fd0",
+  "release_training": "running",
+  "release_stage": "dataset",
+  "release_complete": false,
+  "current_training_state": "data/processed/training-run.json"
+}
